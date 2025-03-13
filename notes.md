@@ -467,3 +467,68 @@ kubectl get pods
 kubectl get nodes
 ...etc...
 ```
+
+# For worker nodes how to fix the issue of certificate of kubelet expired
+- make sure you have an ssh connection between worker node and controller node as we are going to more files to be signed there as CA authority `.key` file is only there
+```bash
+# on worker and controller
+sudo apt install ssh
+sudo systemctl status ssh
+ssh-keygen
+# then from controller to worker copy the key so that controller is part of the known hosts
+ssh-copy-id -i ~/.ssh/id_rsa.pub creditizens@node1.creditizens.net
+```
+- on the worker node you can delete everything from the folder `/var/lib/kubelet/pki/` then restart `kubelet service`: `sudo systemctl restart kubelet`.
+  Then this will automatically populate the folder `var/lib/kubelet/pki/` with new `kubelet.crt` and `kubelet.key` that you are going to use for next command:
+```bash
+sudo openssl req -new -key /var/lib/kubelet/pki/kubelet.key \
+    -out /var/lib/kubelet/pki/kubelet-client.csr \
+    -subj "/CN=system:node:node1-creditizens.net/O=system:nodes"
+```
+
+- Copy the CSR to the Controller Node
+Since the worker node doesn’t have /etc/kubernetes/pki/ca.key, we must sign the CSR on the controller.
+Run this command on the worker node to transfer the CSR file:
+```bash
+scp /var/lib/kubelet/pki/kubelet-client.csr creditizens@controller.creditizens.net>:/tmp/
+```
+
+- Sign the CSR on the Controller Node
+Now, on the controller node, sign the CSR using the CA:
+```bash
+sudo openssl x509 -req -in /tmp/kubelet-client.csr \
+    -CA /etc/kubernetes/pki/ca.crt -CAkey /etc/kubernetes/pki/ca.key \
+    -CAcreateserial -out /tmp/kubelet-client.crt \
+    -days 365
+```
+This signs the CSR, producing kubelet-client.crt, which must be combined with the key.
+
+- Copy the Signed Certificate Back to the Worker Node
+On the controller, transfer the signed certificate back to the worker:
+```bash
+scp /tmp/kubelet-client.crt creditizens@node1.creditizens.net:/tmp/
+```
+
+- Now, on the worker node, move it into place:
+```bash
+sudo mv /tmp/kubelet-client.crt /var/lib/kubelet/pki/kubelet-client.crt
+```
+
+- Create the Correct kubelet-client-current.pem
+The kubelet-client-current.pem file must contain both the certificate and the private key.
+Run this command on the worker node to combine them into a proper PEM file:
+```bash
+sudo cat /var/lib/kubelet/pki/kubelet-client.crt /var/lib/kubelet/pki/kubelet.key | sudo tee /var/lib/kubelet/pki/kubelet-client-current.pem
+```
+
+-  Set the Correct Permissions
+```bash
+sudo chown root:root /var/lib/kubelet/pki/kubelet-client-current.pem
+sudo chmod 600 /var/lib/kubelet/pki/kubelet-client-current.pem
+```
+
+- Restart Kubelet
+```bash
+sudo systemctl restart kubelet
+sudo systemctl status kubelet
+```
