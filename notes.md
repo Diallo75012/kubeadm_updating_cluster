@@ -130,7 +130,7 @@ Here for example the `Kubelet` client certificates will be stored as `Kubelet` o
 
 # `Admin.conf` and `Ca.crt`
 
-1. `Admin.conf`
+## `Admin.conf`
 - `Admin.conf`: is the same file that you are going to find in /home/<admin_user>/.kube/config
 ```bash
 mkdir -p $HOME/.kube
@@ -138,7 +138,7 @@ sudo cp /etc/kubernetes/admin.conf $HOME/.kube/config
 sudo chown $(id -u):$(id -g) $HOME/.kube/config
 ```
 
-2. `Ca.crt` = **Root CA**
+## `Ca.crt` = **Root CA**
 - `Ca.crt`: is the **authority** certificate for all the cluster controller components.
 - Sign in all clients and server certificates.
 
@@ -146,4 +146,324 @@ sudo chown $(id -u):$(id -g) $HOME/.kube/config
 is used by `kubectl` commands to authenticate to the cluster where `Api Server` will use the `Ca.crt` **Authority** to verify signature and permissions.
 
 # excalidraw
-(diagram)[https://excalidraw.com/#json=WzZhrHD8yzfZiZpxozspm,kcfadLPL1OpznKFjlzDezA]
+(diagram)[https://excalidraw.com/#json=3q6Oh6M3oQWq3cUV6E1yD,U9z6RymvrUHzah5QIqjvvA]
+
+
+# MISSING KEYS, CERTS ETC....
+## `sa.pub` file (/etc/kubernetes/pki/sa.pub) Missing
+It is while checking into details the `yaml` files present in `/etc/kubernetes/manifest/` folder that I realized that
+the `kube-apiserver.yaml` file is using also `sa.pub` that verifies signature service account tokens.
+To recreate it I had to run this command:
+```bash
+openssl rsa -in /etc/kubernetes/pki/sa.key -pubout -out /etc/kubernetes/pki/sa.pub
+```
+
+## `controller-manager.crt and .key` (/etc/kubernetes/pki/..) Missing
+- Need to recreate the keys and then to encode base64 and to update the `controller-manager.conf` file with those key/crt in the `user.client` section of the file
+
+1. Generate a New Private Key
+```bash
+sudo openssl genrsa -out /etc/kubernetes/pki/controller-manager.key 2048
+```
+
+2. Create a Certificate Signing Request (CSR)
+```bash
+sudo openssl req -new -key /etc/kubernetes/pki/controller-manager.key \
+-out /etc/kubernetes/pki/controller-manager.csr \
+-subj "/CN=system:kube-controller-manager/O=system:kube-controller-manager"
+```
+
+3.  Sign the Certificate Using the Kubernetes CA
+```bash
+sudo openssl x509 -req -in /etc/kubernetes/pki/controller-manager.csr \
+  -CA /etc/kubernetes/pki/ca.crt -CAkey /etc/kubernetes/pki/ca.key \
+  -CAcreateserial -out /etc/kubernetes/pki/controller-manager.crt \
+  -days 365 -sha256
+Outputs:
+Certificate request self-signature ok
+subject=CN = system:kube-controller-manager, O = system:kube-controller-manager
+```
+
+4. Verify the Certificate
+```bash
+sudo openssl x509 -in /etc/kubernetes/pki/controller-manager.crt -noout -text | grep -E 'Subject:|Issuer:'
+        Issuer: CN = kubernetes
+        Subject: CN = system:kube-controller-manager, O = system:kube-controller-manager
+Outputs:
+Issuer: CN = kubernetes
+        Subject: CN = system:kube-controller-manager, O = system:kube-controller-manager
+```
+
+## `admin.crt and .key` (/etc/kubernetes/pki/..) Missing
+- need to recreate those following same steps as above but just changing names so:
+  - Generate key
+  - Create CSR
+  - Sign using Kubernetes `ca.crt` and `ca.key`
+  - Verify Certificate (just checking...)
+```bash
+sudo openssl genrsa -out /etc/kubernetes/pki/admin.key 2048
+sudo openssl req -new -key /etc/kubernetes/pki/admin.key \
+  -out /etc/kubernetes/pki/admin.csr \
+  -subj "/CN=kubernetes-admin/O=system:masters"
+sudo openssl req -new -key /etc/kubernetes/pki/admin.key \
+  -out /etc/kubernetes/pki/admin.csr \
+  -subj "/CN=kubernetes-admin/O=system:masters"
+sudo openssl x509 -req -in /etc/kubernetes/pki/admin.csr \
+  -CA /etc/kubernetes/pki/ca.crt -CAkey /etc/kubernetes/pki/ca.key \
+  -CAcreateserial -out /etc/kubernetes/pki/admin.crt \
+  -days 365 -sha256
+Outputs:
+Certificate request self-signature ok
+subject=CN = kubernetes-admin, O = system:masters
+sudo openssl x509 -in /etc/kubernetes/pki/admin.crt -noout -text | grep -E 'Subject:|Issuer:'
+Outputs:
+Issuer: CN = kubernetes
+Subject: CN = kubernetes-admin, O = system:masters
+
+```
+
+
+# How to recreate `.pem` file that `kubelet` need and which is located at `/var/lib/kubelet/pki/` ?
+Normally Kubernetes create it auromatically but you can use a simple command to recreate it:
+- just use the `kubeadm` command:
+```bash
+sudo kubeadm certs renew all
+sudo systemctl restart kubelet
+```
+
+OR manually (but i don't see why we do it manually when it should present in each node and it is a different .pem content for each node)
+```bash
+sudo openssl genrsa -out /var/lib/kubelet/pki/kubelet-client.key 2048
+sudo openssl req -new -key /var/lib/kubelet/pki/kubelet-client.key \
+  -out /var/lib/kubelet/pki/kubelet-client.csr \
+  -subj "/CN=system:node:controller.creditizens.net/O=system:nodes"
+openssl x509 -req -in /var/lib/kubelet/pki/kubelet-client.csr \
+  -CA /etc/kubernetes/pki/ca.crt -CAkey /etc/kubernetes/pki/ca.key \
+  -CAcreateserial -out /var/lib/kubelet/pki/kubelet-client-current.pem \
+  -days 365 -sha256
+sudo systemctl restart kubelet
+```
+
+**Important**:
+- The `Kubelet` `.pem` file located at `/var/kubernetes/pki/` is unique in each nodes, therefore, can be manually created only on the `controller` node.
+- If a worker node loses or have issues with that file, it needs to request for a new one as it got the file from when it had joined the cluster:
+```bash
+sudo kubeadm join --token <your-token> --discovery-token-ca-cert-hash sha256:<hash>
+```
+- If a worker node need a new `.pem` file it need to approve pending `csr`:
+```bash
+kubectl get csr
+kubectl certificate approve <csr-name>
+```
+
+# `/var/lib/kubelet/pki/` `.pem` file symlink is pointing to outdated `.pem` file
+The `...current.pem` file is pointing to an outdated one, so we need to make a backup of the outdated one and use the sigle command to renew certs, see issue when `ls -la` folder:
+```bash
+sudo ls -la /var/lib/kubelet/pki
+total 28
+drwxr-xr-x 2 root root 4096 mars  12 20:52 .
+drwx------ 8 root root 4096 juil.  7  2023 ..
+-rw------- 1 root root 1062 mars  12 20:53 kubelet-client-2023-07-07-09-39-43.pem
+-rw-r--r-- 1 root root  960 mars  12 20:53 kubelet-client.csr
+lrwxrwxrwx 1 root root   59 juil.  7  2023 kubelet-client-current.pem -> /var/lib/kubelet/pki/kubelet-client-2023-07-07-09-39-43.pem
+-rw------- 1 root root 1704 mars  12 20:52 kubelet-client.key
+-rw-r--r-- 1 root root 2371 juil.  7  2023 kubelet.crt
+-rw------- 1 root root 1675 juil.  7  2023 kubelet.key
+```
+**Fix:**
+- we backup the outdated .epm file or just delete it
+```bash
+sudo mv kubelet-client-2023-07-07-09-39-43.pem BAK_kubelet-client-2023-07-07-09-39-43.pem
+# OR just : sudo rm -rf kubelet-client-2023-07-07-09-39-43.pem
+```
+- if new file present: we can just create new symlink
+```bash
+sudo ln -sf /var/lib/kubelet/pki/kubelet-client-<new-date>.pem /var/lib/kubelet/pki/kubelet-client-current.pem
+```
+- if not what is my case (the best ever), we create a new one from scratch:
+```bash
+sudo kubeadm certs renew kubelet
+sudo ln -sf /var/lib/kubelet/pki/kubelet-client.pem /var/lib/kubelet/pki/kubelet-client-current.pem
+sudo systemctl restart kubelet
+```
+- i have finally deleted everything from thi `/var/lib/kubelet/pki/` folder to recreate all certs so that everything is renewed and good for learning
+```bash
+sudo rm -rf /var/lib/kubelet/pki/*
+```
+so we recreate all like that:
+```bash
+# recreate key
+sudo openssl genrsa -out /var/lib/kubelet/pki/kubelet-client.key 2048
+# check
+sudo ls -lah /var/lib/kubelet/pki/
+Outputs:
+total 20K
+drwxr-xr-x 2 root root 4,0K mars  12 21:23 .
+drwx------ 8 root root 4,0K juil.  7  2023 ..
+-rw------- 1 root root 1,7K mars  12 21:30 kubelet-client.key
+-rw-r--r-- 1 root root 2,4K juil.  7  2023 kubelet.crt
+-rw------- 1 root root 1,7K juil.  7  2023 kubelet.key
+# create csr
+sudo openssl req -new -key /var/lib/kubelet/pki/kubelet-client.key \
+    -out /var/lib/kubelet/pki/kubelet-client.csr \
+    -subj "/CN=system:node:controller.creditizens.net/O=system:nodes"
+# verify the csr
+sudo openssl req -in /var/lib/kubelet/pki/kubelet-client.csr -noout -text
+Outputs:
+Certificate Request:
+    Data:
+        Version: 1 (0x0)
+        Subject: CN = system:node:controller.creditizens.net, O = system:nodes
+        Subject Public Key Info:
+            Public Key Algorithm: rsaEncryption
+                Public-Key: (2048 bit)
+                Modulus:
+                    00:e6:d6:13:89:65:c9:61:c4:bc:7f:bd:3d:0e:99:
+                    bb:50:9f:6f:74:48:31:20:ef:12:de:92:a6:b1:b6:
+                    31:56:6f:fb:99:15:2f:b8:aa:4b:a1:d9:6d:ec:a3:
+                    95:7f:45:11:6e:0b:8e:7f:2b:b0:3d:80:3d:7d:f7:
+                    ce:04:61:c5:f7:79:06:d8:40:ea:7a:d2:b4:e2:c9:
+                    cb:5d:84:2e:98:f5:f0:e2:9d:d8:89:87:3f:77:74:
+                    ec:03:ec:25:1b:da:82:eb:d0:2a:57:42:77:d7:b0:
+                    a1:88:2b:e5:43:b4:25:01:44:ec:4b:05:88:34:10:
+                    b6:f6:58:9f:3e:f8:e5:73:e3:1b:6c:7b:04:14:a8:
+                    27:14:36:74:f3:63:67:56:d9:d1:c6:05:19:98:18:
+                    0b:fd:ea:b6:69:12:4c:99:79:aa:58:b1:5b:b5:3b:
+                    1f:10:c8:47:7a:8e:6a:79:49:8b:52:8f:b8:b4:ef:
+                    5f:1c:02:2f:97:ce:35:c1:3b:db:09:f6:9a:61:ef:
+                    e0:88:d8:04:d6:cb:76:33:77:95:aa:19:3b:ff:80:
+                    56:ed:c0:01:a6:f9:07:2b:78:4f:fa:89:7f:ab:10:
+                    41:4e:d6:67:c8:65:b4:2c:a2:31:c4:67:a7:3f:56:
+                    81:90:5f:e2:d4:e4:84:18:44:63:43:70:23:02:b5:
+                    58:9b
+                Exponent: 65537 (0x10001)
+        Attributes:
+            (none)
+            Requested Extensions:
+    Signature Algorithm: sha256WithRSAEncryption
+    Signature Value:
+        78:b3:b9:9d:10:a3:da:c5:c4:b5:87:e1:5f:fd:83:d7:21:27:
+        f0:d7:fd:48:c7:f8:b7:e0:70:b7:de:66:00:71:2d:72:bb:e3:
+        6f:25:0f:b7:f8:04:47:94:5f:5b:7a:4a:00:12:ea:b8:b7:54:
+        5a:87:76:5a:07:79:68:8b:8e:d5:f8:2c:50:f9:cf:c9:97:6f:
+        71:20:12:48:4a:c9:66:0d:a0:ec:41:fe:67:46:5b:9d:63:a7:
+        6b:85:c1:80:92:a6:82:43:f3:0f:67:c2:08:97:05:5b:7d:f2:
+        95:d1:93:1b:3f:d8:60:9f:da:3f:50:32:b3:46:3a:dd:31:58:
+        c0:26:7f:f9:1f:77:ea:f5:f7:94:cb:bb:b2:4a:d8:17:02:a1:
+        13:b1:0a:8c:84:5c:dd:af:df:d6:f5:e5:81:91:4f:f7:00:d6:
+        58:21:33:8e:70:ce:4b:cc:2a:5a:83:ed:ea:cb:30:b3:8f:31:
+        85:f1:f8:b6:8c:fb:66:0a:9b:b2:18:29:b6:7d:57:9d:52:b4:
+        9e:66:f2:eb:37:8b:91:49:15:17:60:df:84:bd:5e:dd:1e:1b:
+        38:4a:ec:ec:eb:5c:cf:a2:c3:b5:0c:8b:7a:a7:03:68:7e:6d:
+        7e:d9:c4:ab:26:e8:a7:40:ea:67:0d:5d:7f:30:15:8e:a9:91:
+        e5:e3:7f:6b
+# sign the csr with Kubernetes CA
+sudo openssl x509 -req -in /var/lib/kubelet/pki/kubelet-client.csr \
+    -CA /etc/kubernetes/pki/ca.crt -CAkey /etc/kubernetes/pki/ca.key \
+    -CAcreateserial -out /var/lib/kubelet/pki/kubelet-client-current.pem \
+    -days 365
+Outputs:
+Certificate request self-signature ok
+subject=CN = system:node:controller.creditizens.net, O = system:nodes
+# change permissions
+sudo chown root:root /var/lib/kubelet/pki/kubelet-client-current.pem
+sudo chmod 600 /var/lib/kubelet/pki/kubelet-client-current.pem
+# check cert validity
+sudo openssl x509 -in /var/lib/kubelet/pki/kubelet-client-current.pem -noout -text | grep "validity"
+# fix symlink
+sudo ln -sfn /var/lib/kubelet/pki/kubelet-client-current.pem /var/lib/kubelet/pki/kubelet-client.pem
+# check symlink
+sudo ls -la /var/lib/kubelet/pki/
+Outpus:
+total 28
+drwxr-xr-x 2 root root 4096 mars  12 21:35 .
+drwx------ 8 root root 4096 juil.  7  2023 ..
+-rw-r--r-- 1 root root  960 mars  12 21:31 kubelet-client.csr
+-rw-r--r-- 1 root root 1062 mars  12 21:33 kubelet-client-current.pem
+-rw------- 1 root root 1704 mars  12 21:30 kubelet-client.key
+lrwxrwxrwx 1 root root   47 mars  12 21:35 kubelet-client.pem -> /var/lib/kubelet/pki/kubelet-client-current.pem
+-rw-r--r-- 1 root root 2371 juil.  7  2023 kubelet.crt
+-rw------- 1 root root 1675 juil.  7  2023 kubelet.key
+# create missing `kubelet.crt` and `kubelet.key`
+sudo openssl genrsa -out /var/lib/kubelet/pki/kubelet.key 2048
+sudo openssl req -new -key /var/lib/kubelet/pki/kubelet.key -out /var/lib/kubelet/pki/kubelet.csr \
+    -subj "/CN=kubelet"
+sudo openssl x509 -req -in /var/lib/kubelet/pki/kubelet.csr \
+    -CA /etc/kubernetes/pki/ca.crt -CAkey /etc/kubernetes/pki/ca.key \
+    -CAcreateserial -out /var/lib/kubelet/pki/kubelet.crt -days 365
+sudo chmod 600 /var/lib/kubelet/pki/kubelet.key
+sudo chmod 644 /var/lib/kubelet/pki/kubelet.crt
+# check
+sudo openssl x509 -in /var/lib/kubelet/pki/kubelet.crt -noout -text
+# restart and check kubelet service
+sudo systemctl restart kubelet
+sudo systemctl status kubelet
+```
+
+# SOLUTION
+- the first issue was that certificates were outdated, therefore, i have changed them all
+- next issue was that the `.pem` file of kubelet wasn't holding `crt` and `key` but only the `key`: 
+    - therefore, i have delete those files from the `/var/lib/kubelet/pki/` and recreated everything from scratch
+      but changed the process by manually adding the two keys in the `.pem` files 
+- lesson need a good understanding of all the files and permissions and where those are located, their config files. 
+    That is why I have made the detailed diagram that shows where are the leys, certs and configs and used arrows to show where they pointing to.
+- After when `kubelet` was back i had to wait a bit before getting the `kubectl` command back and the visibility on `nodes`, `pods` etc...
+- terminal output review of what has been done for the last step to fix it:
+```bash
+# stop kubelet (not need it wouldn't start LOL)
+sudo systemctl stop kubelet
+# Remove Incorrect Files
+sudo rm -rf /var/lib/kubelet/pki/kubelet-client*.pem
+sudo rm -rf /var/lib/kubelet/pki/kubelet.crt /var/lib/kubelet/pki/kubelet.key
+sudo rm -rf /var/lib/kubelet/pki/kubelet-client.csr
+'''
+- Only this left in the folder but can empty it fully and recreate all keys:
+sudo ls -la /var/lib/kubelet/pki/
+total 20
+drwxr-xr-x 2 root root 4096 mars  12 23:24 .
+drwx------ 8 root root 4096 juil.  7  2023 ..
+-rw-r--r-- 1 root root  960 mars  12 23:24 kubelet-client.csr
+-rw------- 1 root root 1704 mars  12 23:14 kubelet-client.key
+-rw-r--r-- 1 root root  887 mars  12 21:37 kubelet.csr
+'''
+
+'''
+If wanted to recreate all kubelet.key, kubelet.csr, kubelet.crt can run:
+sudo openssl genrsa -out /var/lib/kubelet/pki/kubelet.key 2048
+sudo openssl req -new -key /var/lib/kubelet/pki/kubelet.key -out /var/lib/kubelet/pki/kubelet.csr \
+    -subj "/CN=kubelet"
+sudo openssl x509 -req -in /var/lib/kubelet/pki/kubelet.csr \
+    -CA /etc/kubernetes/pki/ca.crt -CAkey /etc/kubernetes/pki/ca.key \
+    -CAcreateserial -out /var/lib/kubelet/pki/kubelet.crt -days 365
+sudo chmod 600 /var/lib/kubelet/pki/kubelet.key
+sudo chmod 644 /var/lib/kubelet/pki/kubelet.crt
+'''
+
+#Generate a New CSR (Certificate Signing Request)
+sudo openssl genrsa -out /var/lib/kubelet/pki/kubelet-client.key 2048
+sudo openssl req -new -key /var/lib/kubelet/pki/kubelet-client.key \
+-out /var/lib/kubelet/pki/kubelet-client.csr \
+-subj "/CN=system:node:controller.creditizens.net/O=system:nodes"
+# Sign the CSR to Generate the Correct Certificate
+sudo openssl x509 -req -in /var/lib/kubelet/pki/kubelet-client.csr \
+-CA /etc/kubernetes/pki/ca.crt -CAkey /etc/kubernetes/pki/ca.key \
+-CAcreateserial -out /var/lib/kubelet/pki/kubelet-client.crt \
+-days 365
+# Create the Correct kubelet-client-current.pem
+# This file must contain both the private key and the certificate.
+# that is the super command that manually added `crt` and `key` in the `.pem` file
+sudo cat /var/lib/kubelet/pki/kubelet-client.key /var/lib/kubelet/pki/kubelet-client.crt | sudo tee /var/lib/kubelet/pki/kubelet-client-current.pem
+# Fix Permissions
+sudo chown root:root /var/lib/kubelet/pki/kubelet-client-current.pem
+sudo chmod 600 /var/lib/kubelet/pki/kubelet-client-current.pem
+# restart kubelet
+sudo systemctl restart kubelet
+# check status (should be fine)
+sudo systemctl status kubelet
+# check journal eventually
+sudo journalctl -u kubelet --no-pager --lines=50
+# wait a bit and then start running kubectl commands
+kubectl get pods
+kubectl get nodes
+...etc...
+```
