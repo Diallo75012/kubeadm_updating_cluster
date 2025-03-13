@@ -254,6 +254,9 @@ sudo kubeadm join --token <your-token> --discovery-token-ca-cert-hash sha256:<ha
 ```bash
 kubectl get csr
 kubectl certificate approve <csr-name>
+# if too many <csr-name> in `pending` mode and too many to do it manually just run this command
+# which will" get all csr | filter pending one | run the cert approval for each of those
+kubectl get csr | awk '/Pending/ {print $1}' | xargs kubectl certificate approve
 ```
 
 # `/var/lib/kubelet/pki/` `.pem` file symlink is pointing to outdated `.pem` file
@@ -400,7 +403,7 @@ sudo systemctl restart kubelet
 sudo systemctl status kubelet
 ```
 
-# SOLUTION
+# SOLUTION FOR KUBELET .PEM CERT/KEY RENEWAL AND PRESENCE
 - the first issue was that certificates were outdated, therefore, i have changed them all
 - next issue was that the `.pem` file of kubelet wasn't holding `crt` and `key` but only the `key`: 
     - therefore, i have delete those files from the `/var/lib/kubelet/pki/` and recreated everything from scratch
@@ -439,7 +442,7 @@ sudo chmod 600 /var/lib/kubelet/pki/kubelet.key
 sudo chmod 644 /var/lib/kubelet/pki/kubelet.crt
 '''
 
-#Generate a New CSR (Certificate Signing Request)
+# Generate a New CSR (Certificate Signing Request)
 sudo openssl genrsa -out /var/lib/kubelet/pki/kubelet-client.key 2048
 sudo openssl req -new -key /var/lib/kubelet/pki/kubelet-client.key \
 -out /var/lib/kubelet/pki/kubelet-client.csr \
@@ -532,3 +535,94 @@ sudo chmod 600 /var/lib/kubelet/pki/kubelet-client-current.pem
 sudo systemctl restart kubelet
 sudo systemctl status kubelet
 ```
+
+
+# ISSUE WITH SCHEDULER CRASHBACKLOOP BECAUSE OF CERTIFICATE EXPIRED
+- state of Scheduler in Cluster before fix
+```bash
+# kubectl get pods -n kube-system
+kube-scheduler-controller.creditizens.net            0/1     CrashLoopBackOff   57 (2m27s ago)   615d
+# logs
+kubectl logs kube-scheduler-controller.creditizens.net -n kube-system
+I0313 17:04:47.970993       1 serving.go:348] Generated self-signed cert in-memory
+E0313 17:04:47.972942       1 run.go:74] "command failed" err="error loading config file \"/etc/kubernetes/scheduler.conf\": illegal base64 data at input byte 25"
+```
+
+- Check authority certificate expiry date
+```bash
+sudo openssl x509 -in /etc/kubernetes/pki/front-proxy-ca.crt -noout -dates
+Outputs:
+notBefore=Jul  7 07:39:41 2023 GMT
+notAfter=Jul  4 07:39:41 2033 GMT  STILL VALID!
+```
+
+- Check client certiifcate expiry date
+```bash
+sudo openssl x509 -in /etc/kubernetes/pki/front-proxy-client.crt -noout -dates
+Outputs:
+notBefore=Jul  7 07:39:41 2023 GMT
+notAfter=Mar 10 18:21:00 2026 GMT EXPIRED NEED CREATE A NEW ONE!
+```
+
+### HOW TO CREATE A NEW ONE
+```bash
+# Delete scheduler client keys
+sudo rm -rf /etc/kubernetes/pki/front-proxy-client.crt /etc/kubernetes/pki/front-proxy-client.key
+```
+```bash
+# generate a new key
+sudo openssl genrsa -out /etc/kubernetes/pki/front-proxy-client.key 2048
+```
+```bash
+# create certificate signing request
+sudo openssl req -new -key /etc/kubernetes/pki/front-proxy-client.key -subj "/CN=front-proxy-client" -out /etc/kubernetes/pki/front-proxy-client.csr
+```
+```bash
+# sign the key with the authority certificate
+sudo openssl x509 -req -in /etc/kubernetes/pki/front-proxy-client.csr -CA /etc/kubernetes/pki/front-proxy-ca.crt -CAkey /etc/kubernetes/pki/front-proxy-ca.key -CAcreateserial -out /etc/kubernetes/pki/front-proxy-client.crt -days 365
+```
+
+# SCHEDULER IS RUNNING FINE NOW BUT LOGS SHOW TLS ISSUES
+
+- Check Authority CA expiry date:
+```bash
+openssl x509 -in /etc/kubernetes/pki/ca.crt -noout -dates
+Outputs:
+notBefore=Jul  7 07:39:41 2023 GMT
+notAfter=Jul  4 07:39:41 2033 GMT
+```
+
+- Copy the Authority CA cert to `/usr/local/share...` and update certificates:
+```bash
+sudo cp -f /etc/kubernetes/pki/ca.crt /usr/local/share/ca-certificates/kubernetes.crt
+# for cert to be trusted server wide this need to be done on each `controller` nodes
+sudo update-ca-certificates
+```
+
+# TO DELETE ALL PENDING OR RUNNING POD WITH ONE COMMAND
+- Pending
+```bash
+kubectl delete pods -n kube-system --field-selector=status.phase=Pending
+```
+- Running
+```bash
+kubectl delete pods -n kube-system --field-selector=status.phase=Running
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
