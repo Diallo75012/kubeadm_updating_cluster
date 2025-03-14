@@ -145,8 +145,8 @@ sudo chown $(id -u):$(id -g) $HOME/.kube/config
 `Admin.conf` is which is copied and changed permission to the `admin_user` home directory in `~/.kube/config`
 is used by `kubectl` commands to authenticate to the cluster where `Api Server` will use the `Ca.crt` **Authority** to verify signature and permissions.
 
-# excalidraw
-(diagram)[https://excalidraw.com/#json=3q6Oh6M3oQWq3cUV6E1yD,U9z6RymvrUHzah5QIqjvvA]
+# Diagram of configs dependences on certs
+(diagram)[https://excalidraw.com/#json=elokPxtHr6KkfK5rcWw0j,sOYYyGGT7QpDV1iBqvlfEg]
 
 
 # MISSING KEYS, CERTS ETC....
@@ -609,20 +609,125 @@ kubectl delete pods -n kube-system --field-selector=status.phase=Pending
 kubectl delete pods -n kube-system --field-selector=status.phase=Running
 ```
 
+____________________________________________________________________________
+
+After all of those struggles finally found the right way to do it:
+
+# Utilities command to check cert expiry and more
+- check certificates expiry dates
+```bash
+(sudo) openssl x509 -in <crt_file_path> -noout -dates
+```
+- check journal of a specify service
+```bash
+journalctl -u <service_name> -n <number_of_line_(end of file)_logs> --no-pager
+```
+
+# On All Worker Nodes:
+Those files will be recreated at the end when we re-join worker to the cluster
+
+1. delete all keys and config files
+```bash
+# maybe need to do those one by one manually and make sure to do the symlinked file first before it linked file
+# otherwise you will need to create a dummy one until you delete that file and then delete your dummy file
+sudo rm -rf /var/lib/kubelet/pki/*
+# delete ca.crt and kubelet config
+sudo rm -rf /etc/kubernetes/pki/ca/crt
+sudo rm -rf /etc/kubernetes/kubelet.conf
+```
+
+# On the Controller Node
+We used `kubeadm` to create the cluster so let's use it's utilities commands to renew all certs and config files
+We will also delete all files that are not needed but needs to be regenreated
+
+1. Remove expired kubelet certificates/config
+```bash
+# do it manually for all files in the folder and delete symlinked file (the file with `->`) before the other
+sudo rm -f /var/lib/kubelet/pki/*
+sudo rm -f /etc/kubernetes/kubelet.conf
+```
+
+2. Recreate kubelet.conf for control-plane
+```bash
+sudo kubeadm init phase kubeconfig all
+# if `kubelet.conf` is not recreated use the following command to target it alone (it will recreate it)
+sudo kubeadm init phase kubeconfig kubelet
+```
+
+3. Ensure rotation enabled (should already be done)
+```
+# ensure rotateCertificates: true
+sudo nano /var/lib/kubelet/config.yaml
+```
+
+4. Restart kubelet
+```
+sudo systemctl restart kubelet
+```
+
+5. Check kubelet and cluster status
+```bash
+sudo systemctl status kubelet
+kubectl get nodes
+```
+
+Now `kubectl` command should work and controller node should appear fine
+but the other `worker` nodes should be `NotReady`.
+
+It is time now to regenerate a token to join the cluster again
+which will recreate certs and config files in `worker` nodes.
 
 
+6. create the token that will be applied on worker node to join the cluster
+```bash
+kubeadm token create --print-join-command
+```
+
+# On Each Worker Node
+7. past the command to join the cluster
+    after having made sure that you have deleted all `.crt`, `.key` and `.pem`
+    from `/var/lib/kubelet/pki/` and `/etc/kubernetes/pki/`
+    and `.conf` file from `/etc/kubernetes/` folders
+```bash
+sudo kubeadm token create --print-join-command
+```
+
+8. restart kubelet and check it (accessory can also restart containerd but I didn't need myselfu)
+```bash
+sudo systemctl restart kubelet
+sudo systemctl status kubelet
+```
+
+# Check The Controller Node
+9. check that `workers` are nw back to work with status `Ready`
+```bash
+kubectl get nodes -o wide
+```
+
+10. Test a deployment and scale it and expose it and check if you see the app in browser, then tear down
+```bash
+# create namesapce
+kubectl create ns nginx
+# create deplyment
+kubectl create deployment test-nginx -ns nginx --image=nginx
+# scale deplyment
+kubectl scale deployment test-nginx  -ns nginx --replicas=3
+# check deployment and pods
+kubectl get deployments test-nginx -ns nginx
+kubectl get pods -l app=test-nginx -ns nginx
+# expose deplyment through service creation for it
+kubectl expose deployment test-nginx -ns nginx --port=80 --type=NodePort
+kubectl get svc test-nginx -ns nginx
+# can curl or just url in the browser the port is the one on the `right side 80:<port_for_brower>`
+curl http://localhost:31234
+# tear all down
+kubectl delete svc test-nginx -ns nginx
+kubectl delete deployment test-nginx -ns nginx
+kubectl delete ns nginx
+```
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+# Next
+- [ ] update the cluster versions until we reach 1.32 (we are at 1.27)
+    so we will have to do same process several times and fix any compatibility issues along the way.
+    need to check supported versions ranges for each kubeadm updated version
