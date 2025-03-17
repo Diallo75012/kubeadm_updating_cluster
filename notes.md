@@ -990,9 +990,189 @@ sudo systemctl restart kubelet
 - on controller node
 ```bash
 kubectl uncordon <node-to-uncordon>
-
-
-
-
-
 ```
+
+___________________________________________________________________________________________
+
+# Kubernetes Plugins 
+
+External utilities can be installed and used to interact with Kubernetes.
+The easiest way to manage those is by installing `Krew` which will be used in combinaison of `kubectl`.
+
+### install `krew`
+source: [Krew Install](https://krew.sigs.k8s.io/docs/user-guide/setup/install/)
+1. Install using this command (do not omit the parenthesis):
+```bash
+(
+  set -x; cd "$(mktemp -d)" &&
+  OS="$(uname | tr '[:upper:]' '[:lower:]')" &&
+  ARCH="$(uname -m | sed -e 's/x86_64/amd64/' -e 's/\(arm\)\(64\)\?.*/\1\2/' -e 's/aarch64$/arm64/')" &&
+  KREW="krew-${OS}_${ARCH}" &&
+  curl -fsSLO "https://github.com/kubernetes-sigs/krew/releases/latest/download/${KREW}.tar.gz" &&
+  tar zxvf "${KREW}.tar.gz" &&
+  ./"${KREW}" install krew
+)
+```
+2. add to `~/.bashrc` the export to add it to `PATH`:
+```bash
+export PATH="${KREW_ROOT:-$HOME/.krew}/bin:$PATH"
+source ~/.bashrc
+```
+3. we can now use `krew` with `kubectl` to install plugins
+```bash
+# here plugin that will display the yaml/josn in a `neat` clean way when for example extracting those from cluster
+kubectl krew install neat
+```
+4. now use the plugin to get here nice `yaml` or `json` output of resources
+```bash
+kubectl get deployment nginx -n nginx -o yaml | kubectl neat > nginx-deployment.yaml
+```
+- outputs:
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.kubernetes.io/revision: "3"
+  labels:
+    app: nginx
+  name: nginx
+  namespace: nginx
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 3
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: nginx
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+```
+___________________________________________________________________________________________________________
+# Kubernetes Patching Deployment
+Here we will use a side `.yaml` file to patch our deployment:
+- if the keys names are the same as in the initial deployment the field will be updated
+- if the keys names are different those will be added to the deployment
+- therefore, **make sure you choose the name of the keys carfully**
+
+- here have added a `configMap` as a mounted volume to the `nginx` deployment
+```bash
+cat config-map.yaml 
+```
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-html
+  namespace: nginx
+data:
+  index.html: |
+    <h1 style="color:red;">Creditizens Customized Page Red</h1>
+```
+
+- here we create the side file that target the fields that will be updated
+```bash
+cat nginx-deployment-patching.yaml 
+```
+```yaml
+spec:
+  template:
+    spec:
+      containers:
+      - name: nginx
+        image: nginx
+        volumeMounts:
+        - name: nginx-html-conf
+          mountPath: /usr/share/nginx/html/
+      volumes:
+      - name: nginx-html-conf
+        configMap:
+          name: nginx-html
+```
+
+- now patch deployment and you will see that nginx pages are displaying the red message `Creditizens Page Red`
+```bash
+# apply patch
+kubectl patch deployment nginx -n nginx --type merge --patch-file nginx-deployment-patching.yaml
+# update deployment (will start new pod and make the rolling update of those with default 25% surge)
+kubectl rollout restart deployment/nginx -n nginx
+```
+
+_______________________________________________________________________________________
+
+# Kubernetes `kubectl` auto-completion
+source: [aliases and completion `kubectl`](https://kubernetes.io/docs/tasks/tools/install-kubectl-linux/#enable-shell-autocompletion)
+- install bash completion
+```bash
+sudo apt install bash-completion
+```
+- install `kubectl` completion and make an short alias
+```bash
+echo 'source <(kubectl completion bash)' >>~/.bashrc
+echo 'alias k=kubectl' >>~/.bashrc
+echo 'complete -o default -F __start_kubectl k' >>~/.bashrc
+source ~/.bashrc
+```
+_______________________________________________________________________________________
+
+# Kubernetes RollBack ('rollout undo')
+source: [rollout history and rollout undo](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#rolling-back-a-deployment)
+- check the history of different revisions. The biggest number is the lastest and the `1` is the oldest
+```bash
+ k rollout history  deployment nginx -n nginx
+```
+- You can have the a description recorded btu not using flag `--record` which is deprecated but using an `annotation`
+eg.: patching a deployment and adding an annotation type `kubernetes.io/change-cause:<the cause of the change>`
+```yaml
+metadata:
+  annotations:
+    kubernetes.io/change-cause: "Shibuya is not accessible today, VIOLET ALERT!"
+spec:
+  template:
+    spec:
+      containers:
+      - name: nginx
+        image: nginx
+        volumeMounts:
+        - name: nginx-violet
+          mountPath: /usr/share/nginx/html/
+      volumes:
+      - name: nginx-violet
+        configMap:
+          name: nginx-html
+```
+- rollback is done still using the keyword `rollout` but with `undo` and `--to-revision=<nbr of revision shown in history>`
+```bash
+- example output of some with the command used that use `--record` deprecated flag, some the `annotation` and some nothing:
+k rollout history  deployment nginx -n nginx
+Outputs:
+deployment.apps/nginx 
+REVISION  CHANGE-CAUSE
+4         <none>   # example of nothing specified
+5         <none>
+6         <none>
+7         <none>
+8         <none>
+10        kubectl patch deployment nginx --namespace=nginx --type=merge --   # example of `--record` flag used (deprecated)
+11        kubectl patch deployment nginx --namespace=nginx --type=merge --
+12        Shibuya is not accessible today, VIOLET ALERT!    # example of the `annotations: kubernetes.io/change-cause: "<cause to put here>" 
+13        Shibuya is not accessible today, VIOLET ALERT
+14        kubectl patch deployment nginx --namespace=nginx --type=merge --patch-file=nginx-deployment-patching.yaml --record=true
+15        kubectl patch deployment nginx --namespace=nginx --type=merge --patch-file=nginx-deployment-patching.yaml --record=true
+```
+```bash
+# now we perform the rolback
+k rollout undo deployment/nginx -n nginx --to-revision=9
+Outputs:
+deployment.apps/nginx rolled back
+```
+
+Now at every use of the command `k rollout undo` or `k rollout restart` we will have a new `revision` numbered line in the history. 
+
+rollout is just for: `kind:` `Deployments` or`ReplicaSets` or `StatefulSets`
+
+**NOTE:**
+When a `node` is down you lose all and `kubernetes` only can recreate pods in other nodes if they use `replicasets` under the hoow. So only `kind:` `kind:` `Deployments` or`ReplicaSets` or `StatefulSets` are getting the change to have their pods redeployed in healthy nodes. The standalone pods, are not recreated and lost, if using `hostPath` or `local` `persistent volumes` it is lost as it leaves in the `node` so you better use `ebs`, `nfs` or remote persistant volumes so that new pod recreated in other nodes will be able to reach those.
+`DaemonSet`, `CongiMap`, `Secret`, `ServiceAccount`, `Service`: all of those will survive! so for standalone `pods` better change `kind` from `kind: Pod` to `kind: Deployment` so that they will be rescheduled in another healthy `node`.
