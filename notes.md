@@ -1553,7 +1553,14 @@ Is done using keyword in `operator`:
 
 
 
-
+scenarios:
+- 1:
+create deployment nginx with 1 replica only and use labels
+create a pod with a label selector same as the deployment one to show that it dies
+create a pod a label selector different from the deployment to show that it stays alive
+delete the deployment tearing it down
+keep the pod and deploy again with 3 replicas and show that that pod will be acquired by the replicaset (so replicaset will be only deploying 2 new pods and acquiring the existing one)
+show labels grouping using -L which will create a column int he output of `get pods` using the key of the label
 
 
 
