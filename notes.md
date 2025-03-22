@@ -1315,13 +1315,13 @@ source: (Kubernetes Documentation)[https://kubernetes.io/docs/concepts/overview/
 
 We will provide examples of `kind: Deployment` or `kind: ReplicaSet` that will have a certain number of `replicas` count. And we will see what happen when you create a pods before that with a `selector` that have same label as the `replicaSet` implemented resource.
 Answer is that:
-  - if the `pod` is created after the `ReplicaSet`, the `pod` will be kiled instantly as the `ReplicaSet` have already reach maximum of `replicas` counts deployed int he cluster.
+  - if the `pod` is created after the `ReplicaSet`, the `pod` will be kiled instantly as the `ReplicaSet` have already reach maximum of `replicas` counts deployed in the cluster.
   - if the `pod` is created before the `ReplicaSet`, when the `ReplicaSet` will be deployed to the cluster, it will acquire those pods having the `Selector` matching its `labels`, therefore it will only add pods on top of what it has in `replicas` count OR will aquire pods until it fulfills its scaling `replicas` count and would kill all other pods having `selector` matching it `labels`
 **So Be Very Carefull Here!**
 
 ### `ReplicaSets` restart policy
 Source: (restart policy doc)[https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#restart-policy]
-- `Always`: depfault, always restarts container on terminaison
+- `Always`: default, always restarts container on terminaison
 - `OnFailure`: restarts container on error
 - `Never`: Never restarts container, dead/terminaison/error/other just bye bye!
 
@@ -1332,7 +1332,7 @@ spec:
   selector:
     matchLabels:
       tier: junko
-  # template part need also to therefore have a labvel and MUST match the selector label to not be rejected by the API Server
+  # `template` part need also to therefore have a `label` and MUST match the `selector` `matchlabels` to not be rejected by the API Server
   template:
     metadata:
       labels:
@@ -1350,6 +1350,12 @@ curl -X DELETE  'localhost:8080/apis/apps/v1/namespaces/default/replicasets/fron
   -d '{"kind":"DeleteOptions","apiVersion":"v1","propagationPolicy":"Foreground"}' \
   -H "Content-Type: application/json"
 ```
+- Here `propagationPolicy` can be `orphan`, but why use this behavior of getting rid of the `replicaset` but keeping the `pods` in the Cluster as standalone `pods`?
+  - for example, if we want to debug or test a new version in a specific pod and don't want to replicaset to restart the pods,
+    we can't just scale down it to `0`. We can use this strategy to get rid of the `replicaset` temporaly and then recreate a new one that would `acquire` those pods back based on `labels` for example.
+  - imperative command:
+    - `kubectl delete replicaset <rs-name> --cascade=orphan`
+    - `kubectl delete replicaset my-rs --grace-period=0 --cascade=orphan --force`
 
 ### When Scaling Down `ReplicaSets` How Pods Deletion Are Prioritized:
 - 1: first will be deleted any pods in `pending` state or `unschedulable`
@@ -1380,10 +1386,10 @@ spec:
 - keywords for values:
   - `!`: means NOT and placed in front of key to excluse those keys
 - keywords for values:
-  - `in`: values are `EQUAL` to
-  - `notin`: values are `NOT EQUAL` to
-  - `exists`:
-  - `DoesNotExist`: 
+  - `in`: values are `EQUAL` to in the set of values supplied
+  - `notin`: values are `NOT EQUAL` to in the set of values supplied
+  - `exists`: a label that does exist (only check key not value)
+  - `DoesNotExist`: a label that does not exist (only check key not value)
   - `,`: comma means `AND`
 
 eg. of meanings :
@@ -1400,6 +1406,8 @@ shibuya
 ### more complexe requirements
 # (key=`mangakissa`, with values=`ueno` AND `omotesando`), AND (key=`appdeploymentgroup`, values: NOT EQUAL to `production`)
 mangakissa in (ueno, omotesando), appdeploymentgroup!=production
+# checks if key `shomikitazawa` exist (not value)
+exists: shimokitazawa
 ```
 
 `Set-Based` requirements uses keywords while the other `Equality-Based` requirements are using `=`, `==` `!=`
@@ -1409,7 +1417,7 @@ kubectl get pods -l appdeploymentgroup!=production,magakissa=shibuya
 kubectl get pods -l 'appdeploymentgroup in (staging),mangakissa in (shibuya)'
 ```
 
-- in this `yaml` example fromt he `Kubernetes` documentation, satisfaction in when `ALL` `matchExpressions` **MUST** be satisfied
+- in this `yaml` example from the `Kubernetes` documentation, satisfaction in when `ALL` `matchExpressions` **MUST** be satisfied
 ```yaml
 selector:
   matchLabels:
@@ -1418,6 +1426,64 @@ selector:
     - { key: tier, operator: In, values: [cache] }
     - { key: environment, operator: NotIn, values: [dev] }
 ```
+
+## What is `ANDed` (`AND`) and What is `ORed` (`OR`)
+
+### `matchExpressions`
+- Here all conditions must be true (AND logic)
+```yaml
+matchExpressions:
+  - key: env
+    operator: In
+    values: [prod, dev]
+  - key: app
+    operator: Exists
+```
+This matches only Pods that: have env=prod or env=dev `AND` have the label app (any value)
+
+### `nodeSelector`
+- Here `nodeSelector`: Only `AND`, no `OR`
+```yaml
+spec:
+  nodeSelector:
+    env: prod
+    region: us-west
+```
+strictly: env == prod `AND` region == us-west, **No** support for `OR` here.
+
+### `nodeAffinity` (same for: `podAffinity`)
+- `AND`: `requiredDuringSchedulingIgnoredDuringExecution` (hard constraints) only supports `AND` across matchExpressions.
+  So here inside one `matchExpressions` if there more than one option it is `AND` so all of those have to be true
+```yaml
+requiredDuringSchedulingIgnoredDuringExecution:
+  nodeSelectorTerms:
+    - matchExpressions:
+        - key: env
+          operator: In
+          values: [prod]
+        - key: region
+          operator: In
+          values: [us-west]
+```
+That means: (env == prod) `AND` (region == us-west)
+
+- `OR`: `requiredDuringSchedulingIgnoredDuringExecution` also support `OR` but this time across several `match#xpressions` each `matchExpressions` being sets of `ORs`
+
+You can provide multiple `nodeSelectorTerms` `matchExpressions`, and those terms are `ORed`.
+Here match nodes that are either: env=prod `OR` region=us-west
+```yaml
+requiredDuringSchedulingIgnoredDuringExecution:
+  nodeSelectorTerms:
+    - matchExpressions:
+        - key: env
+          operator: In
+          values: [prod]
+    - matchExpressions:
+        - key: region
+          operator: In
+          values: [us-west]
+```
+(env == prod) `OR` (region == us-west): inside each individual `matchExpressions` terms are `ANDed`, the `nodeSelectorTerms` several `matchExpressions` between themselves are `ORed`
 
 ## Label Usefulness To Have View in Cluster With Different Parts Grouped in Custom Columns
 
@@ -1554,7 +1620,7 @@ Is done using keyword in `operator`:
 
 
 scenarios:
-- 1:
+- 1) We can here justify that scenario with a troubleshooting in staging environment, so temporaly delete replicaset and then re-acquire pods: 
 create deployment nginx with 1 replica only and use labels
 create a pod with a label selector same as the deployment one to show that it dies
 create a pod a label selector different from the deployment to show that it stays alive
@@ -1562,26 +1628,374 @@ delete the deployment tearing it down
 keep the pod and deploy again with 3 replicas and show that that pod will be acquired by the replicaset (so replicaset will be only deploying 2 new pods and acquiring the existing one)
 show labels grouping using -L which will create a column int he output of `get pods` using the key of the label
 
+- 2) Pod deletion priority setup using annotation
+- 1: first will be deleted any pods in `pending` state or `unschedulable`
+- 2: then,  will come any pods with the `annotation`: `controller.kubernetes.io/pod-deletion-cost`. The lower number one is delete first and so on.
+So here we could do a scenario to have pods being annotated and see how the deployment replicas are scaled down meaning in which order
+We could create an error first having the full replicaspulling an image that doesn't exist
+then patch some replicas to fix those pods and get those running
+and then have the scaling down showing in which order those pods would be deleted
+then do the deployment again with healthy pods 
+then annotate some of those pods with the `annotation`: `controller.kubernetes.io/pod-deletion-cost` and then scale down to see in which order those are scale down
+
+
+- 3) Scenario in which we would use `nodeselector` to affect pods in specific nodes
+```
+selector:
+  matchLabels:
+    component: redis
+  matchExpressions:
+    - { key: tier, operator: In, values: [cache] }
+    - { key: environment, operator: NotIn, values: [dev] }
+```
+this would need us to label nodes and then have selectors in deploymed pods
+this also could be used with `selector` and use `matchExpression` in order to show IN/NOTIN/EXIST/DOESNOTEXIST 
+little explanation of those:
+```
+# key=`citynode`, values accepted=`tokyo` AND (because of comma: `,`) hokkaido
+citynode in (tokyo, hokkaido)
+# key=`nevereurope`, values=france AND emgland
+nevereurope notin (france, england)
+# key exclusive without value indicated. key=`shibuya`
+shibuya
+# key=NOT EQUAL to (because exclamation mark: `!`) shinjuku
+!shinjuku
+### more complexe requirements
+# (key=`mangakissa`, with values=`ueno` AND `omotesando`), AND (key=`appdeploymentgroup`, values: NOT EQUAL to `production`)
+mangakissa in (ueno, omotesando), appdeploymentgroup!=production
+
+```
+
+```
+selector:
+  matchLabels:
+    component: redis
+  matchExpressions:
+    - { key: tier, operator: In, values: [cache] }
+    - { key: environment, operator: NotIn, values: [dev] }
+```
+
+- 4) Scenario in which we would show how labelling helps groups resources and have nice Cluster resources view by grouping those in representative custom columns
+```
+k get pod --all-namespaces --show-labels -o wide
+```
+```
+k get pod --all-namespaces -Lcontroller-revision-hash -Lk8s-app -Lcomponent
+```
+
+- 5) Scenario in which we would use a `nodeSelector` and then a node `affinity` to show that we can set more specific rules using `affinity`
+- `requiredDuringSchedulingIgnoredDuringExecution`: `required` so MUST be equal to those specifications.
+- `preferredDuringSchedulingIgnoredDuringExecution`: `preferred` so NOT STRICT RULE but preferred rule.
+here show emphasis in explaning the ORed and ANDed of matchExpressions
+```
+# ANDed
+requiredDuringSchedulingIgnoredDuringExecution:
+  nodeSelectorTerms:
+    - matchExpressions:
+        - key: env
+          operator: In
+          values: [prod]
+        - key: region
+          operator: In
+          values: [us-west]
+```
+```
+# ORed
+requiredDuringSchedulingIgnoredDuringExecution:
+  nodeSelectorTerms:
+    - matchExpressions:
+        - key: env
+          operator: In
+          values: [prod]
+    - matchExpressions:
+        - key: region
+          operator: In
+          values: [us-west]
+```
+
+_______________________________________________________________________________
+
+- 1) `nodeSelector`
+### label the node
+```bash
+kubectl label node node1.creditizens.net location=jiguoka
+```
+
+### here we create a yaml file
+```bash
+kubectl create deployment nginx-jiguoka --image=nginx --replicas=2 --dry-run=client -o yaml > nginx-jiguoka-deployment.yaml
+```
+
+### here we go in the yaml file and clear the fields that we don't need and a `nodeSelector` to the `template.spec`
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: nginx-jiguoka
+  name: nginx-jiguoka
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nginx-jiguoka
+  template:
+    metadata:
+      labels:
+        app: nginx-jiguoka
+    spec:
+      containers:
+      - image: nginx
+        name: nginx
+      # we use node selector
+      nodeSelector:
+        location: jiguoka
+```
+### we deploy and see that the pods replicas are all located int he same `node1` thanks to `label` and `nodeSelector` on that `label`
+```bash
+k apply -f nginx-jiguoka-deployment.yaml
+k get pods -A -o wide
+Outputs:
+NAMESPACE     NAME                                                 READY   STATUS    RESTARTS        AGE     IP                NODE                         NOMINATED NO
+DE   READINESS GATES
+default       nginx-jiguoka-6dcb747564-cgddg                       1/1     Running   0               17s     172.16.206.102    node1.creditizens.net        <none>      
+     <none>
+default       nginx-jiguoka-6dcb747564-x2zxg                       1/1     Running   0               17s     172.16.206.103    node1.creditizens.net        <none> 
+```
+### now we create a `pod` standalone with a `nodeSelector` that would affect this `pod` where the `replicaset` (`deployment` higher level including `replicaset`) is already deployed to see that the `pod` won't be able to be created, then create a scale down on the `deployment` using imperative command to show that the `pod` will be `acquired`
+
+```bash
+k run nginx-jiguoka-standalone --image=nginx --dry-run=client -o yaml > jiguoka-pod-standalone-labelled-for-node1.yaml  
+```
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    run: nginx-jiguoka
+  name: nginx-jiguoka
+spec:
+  containers:
+  - args:
+    - nginx-jiguoka-node1-standalone
+    image: nginx
+    name: nginx-jiguoka
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+  nodeSelector:
+    location: jiguoka
+```
+```bash
+k apply -f jiguoka-pod-standalone-labelled-for-node1.yaml
+```
+### check the state of the cluster to confirm `pod` is scheduled on `node1` but... never up running
+Here we see that the `pod` can't be scheduled and is crashing
+```bash
+k get pods -A -o wide
+Outputs:
+NAMESPACE     NAME                                                 READY   STATUS             RESTARTS        AGE     IP                NODE                         NOM
+INATED NODE   READINESS GATES
+default       nginx-jiguoka-6dcb747564-cgddg                       1/1     Running            0               31m     172.16.206.102    node1.creditizens.net        <no
+ne>           <none>
+default       nginx-jiguoka-6dcb747564-x2zxg                       1/1     Running            0               31m     172.16.206.103    node1.creditizens.net        <no
+ne>           <none>
+default       nginx-jiguoka                                        0/1     CrashLoopBackOff   1 (6s ago)      10s     172.16.206.105    node1.creditizens.net        <no
+ne>           <none>
+```
+
+### describe the `nginx-jiguoka` `pod` and show `nodeSelector` and all errors
+```bash
+kubectl describe pod nginx-jiguoka
+Name:             nginx-jiguoka
+Namespace:        default
+Priority:         0
+Service Account:  default
+Node:             node1.creditizens.net/192.168.186.147
+Start Time:       Sat, 22 Mar 2025 20:13:13 +0100
+Labels:           run=pod
+Annotations:      cni.projectcalico.org/containerID: 23eaceb72018a6e446e5b83e1a2338939627c053320ba8f7a81473a891940964
+                  cni.projectcalico.org/podIP: 172.16.206.104/32
+                  cni.projectcalico.org/podIPs: 172.16.206.104/32
+Status:           Running
+IP:               172.16.206.104
+IPs:
+  IP:  172.16.206.104
+Containers:
+  pod:
+    Container ID:  containerd://de2b26864e72caab9131e6f74d05e9fcaa744f215bf52be7bc430e99d9cdd9cc
+    Image:         nginx
+    Image ID:      docker.io/library/nginx@sha256:124b44bfc9ccd1f3cedf4b592d4d1e8bddb78b51ec2ed5056c52d3692baebc19
+    Port:          <none>
+    Host Port:     <none>
+    Args:
+      nginx-jiguoka-node1-standalone
+    State:          Terminated
+      Reason:       Error
+      Exit Code:    127
+      Started:      Sat, 22 Mar 2025 20:13:35 +0100
+      Finished:     Sat, 22 Mar 2025 20:13:35 +0100
+    Last State:     Terminated
+      Reason:       Error
+      Exit Code:    127
+      Started:      Sat, 22 Mar 2025 20:13:17 +0100
+      Finished:     Sat, 22 Mar 2025 20:13:17 +0100
+    Ready:          False
+    Restart Count:  2
+    Environment:    <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-bvsz8 (ro)
+Conditions:
+  Type              Status
+  Initialized       True 
+  Ready             False 
+  ContainersReady   False 
+  PodScheduled      True 
+Volumes:
+  kube-api-access-bvsz8:
+    Type:                    Projected (a volume that contains injected data from multiple sources)
+    TokenExpirationSeconds:  3607
+    ConfigMapName:           kube-root-ca.crt
+    ConfigMapOptional:       <nil>
+    DownwardAPI:             true
+QoS Class:                   BestEffort
+Node-Selectors:              location=jiguoka
+Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                             node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+Events:
+  Type     Reason     Age                From               Message
+  ----     ------     ----               ----               -------
+  Normal   Scheduled  34s                default-scheduler  Successfully assigned default/pod to node1.creditizens.net
+  Normal   Pulled     32s                kubelet            Successfully pulled image "nginx" in 1.126s (1.126s including waiting)
+  Normal   Pulled     30s                kubelet            Successfully pulled image "nginx" in 1.081s (1.081s including waiting)
+  Normal   Pulling    14s (x3 over 33s)  kubelet            Pulling image "nginx"
+  Normal   Created    13s (x3 over 32s)  kubelet            Created container pod
+  Normal   Pulled     13s                kubelet            Successfully pulled image "nginx" in 1.104s (1.104s including waiting)
+  Normal   Started    12s (x3 over 32s)  kubelet            Started container pod
+  Warning  BackOff    12s (x3 over 29s)  kubelet            Back-off restarting failed container pod in pod pod_default(a27318dc-212e-4177-8651-49ee3cdfe825)
+```
 
 
 
 
 
 
+______________________________________________________________________________________
 
+creditizens@controller:~/kubeadm_updating_cluster$ k apply -f nginx-jiguoka-deployment.yaml 
+pod/nginx-jiguoka created
+creditizens@controller:~/kubeadm_updating_cluster$ k get pods --show-labels 
+NAME                             READY   STATUS    RESTARTS   AGE   LABELS
+nginx-jiguoka                    1/1     Running   0          13s   run=nginx-jiguoka
+nginx-jiguoka-6dcb747564-cgddg   1/1     Running   0          79m   app=nginx-jiguoka,pod-template-hash=6dcb747564
+nginx-jiguoka-6dcb747564-x2zxg   1/1     Running   0          79m   app=nginx-jiguoka,pod-template-hash=6dcb747564
+creditizens@controller:~/kubeadm_updating_cluster$ k get pods -L node
+NAME                             READY   STATUS    RESTARTS   AGE   NODE
+nginx-jiguoka                    1/1     Running   0          33s   
+nginx-jiguoka-6dcb747564-cgddg   1/1     Running   0          79m   
+nginx-jiguoka-6dcb747564-x2zxg   1/1     Running   0          79m   
+creditizens@controller:~/kubeadm_updating_cluster$ k get pods -o wide
+NAME                             READY   STATUS    RESTARTS   AGE   IP               NODE                    NOMINATED NODE   READINESS GATES
+nginx-jiguoka                    1/1     Running   0          41s   172.16.206.108   node1.creditizens.net   <none>           <none>
+nginx-jiguoka-6dcb747564-cgddg   1/1     Running   0          80m   172.16.206.102   node1.creditizens.net   <none>           <none>
+nginx-jiguoka-6dcb747564-x2zxg   1/1     Running   0          80m   172.16.206.103   node1.creditizens.net   <none>           <none>
+creditizens@controller:~/kubeadm_updating_cluster$ kubectl label deployment nginx-jiguoka location=jiguoka
+deployment.apps/nginx-jiguoka labeled
+creditizens@controller:~/kubeadm_updating_cluster$ k get pods -o wide
+NAME                             READY   STATUS    RESTARTS   AGE   IP               NODE                    NOMINATED NODE   READINESS GATES
+nginx-jiguoka                    1/1     Running   0          88s   172.16.206.108   node1.creditizens.net   <none>           <none>
+nginx-jiguoka-6dcb747564-cgddg   1/1     Running   0          80m   172.16.206.102   node1.creditizens.net   <none>           <none>
+nginx-jiguoka-6dcb747564-x2zxg   1/1     Running   0          80m   172.16.206.103   node1.creditizens.net   <none>           <none>
+creditizens@controller:~/kubeadm_updating_cluster$ kubectl delete -f nginx-jiguoka-deployment.yaml 
+pod "nginx-jiguoka" deleted
+creditizens@controller:~/kubeadm_updating_cluster$ k get pods -o wide
+NAME                             READY   STATUS    RESTARTS   AGE   IP               NODE                    NOMINATED NODE   READINESS GATES
+nginx-jiguoka-6dcb747564-cgddg   1/1     Running   0          81m   172.16.206.102   node1.creditizens.net   <none>           <none>
+nginx-jiguoka-6dcb747564-x2zxg   1/1     Running   0          81m   172.16.206.103   node1.creditizens.net   <none>           <none>
+creditizens@controller:~/kubeadm_updating_cluster$ k get pods --show-labels 
+NAME                             READY   STATUS    RESTARTS   AGE   LABELS
+nginx-jiguoka-6dcb747564-cgddg   1/1     Running   0          81m   app=nginx-jiguoka,pod-template-hash=6dcb747564
+nginx-jiguoka-6dcb747564-x2zxg   1/1     Running   0          81m   app=nginx-jiguoka,pod-template-hash=6dcb747564
+creditizens@controller:~/kubeadm_updating_cluster$ kubectl get deployments --show-labels 
+NAME            READY   UP-TO-DATE   AVAILABLE   AGE   LABELS
+nginx-jiguoka   2/2     2            2           81m   app=nginx-jiguoka,location=jiguoka
+creditizens@controller:~/kubeadm_updating_cluster$ kubectl apply -f nginx-jiguoka-deployment.yaml 
+pod/nginx-jiguoka created
+creditizens@controller:~/kubeadm_updating_cluster$ k get pods -o wide
+NAME                             READY   STATUS    RESTARTS   AGE   IP               NODE                    NOMINATED NODE   READINESS GATES
+nginx-jiguoka                    1/1     Running   0          5s    172.16.206.109   node1.creditizens.net   <none>           <none>
+nginx-jiguoka-6dcb747564-cgddg   1/1     Running   0          82m   172.16.206.102   node1.creditizens.net   <none>           <none>
+nginx-jiguoka-6dcb747564-x2zxg   1/1     Running   0          82m   172.16.206.103   node1.creditizens.net   <none>           <none>
+creditizens@controller:~/kubeadm_updating_cluster$ cat nginx-jiguoka-deployment.yaml 
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    run: nginx-jiguoka
+  name: nginx-jiguoka
+spec:
+  containers:
+  - image: nginx
+    name: nginx-jiguoka
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+  nodeSelector:
+    location: jiguoka
+creditizens@controller:~/kubeadm_updating_cluster$ cat 
+diagram_kuberneted_certs_keys_mapping_files_folders.png  nginx-jiguoka-deployment.yaml
+.git/                                                    notes.md
+jiguoka-pod-standalone-labelled-for-node1.yaml           README.md
+creditizens@controller:~/kubeadm_updating_cluster$ cat jiguoka-pod-standalone-labelled-for-node1.yaml 
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    run: pod
+  name: pod
+spec:
+  containers:
+  - args:
+    - nginx-jiguoka-node1-standalone
+    image: nginx
+    name: pod
+  dnsPolicy: ClusterFirst
+  restartPolicy: Always
+  nodeSelector:
+    location: jiguoka
+creditizens@controller:~/kubeadm_updating_cluster$ sudo rm -rf jiguoka-pod-standalone-labelled-for-node1.yaml 
+[sudo] password for creditizens: 
+creditizens@controller:~/kubeadm_updating_cluster$ k describe deployment nginx-jiguoka 
+Name:                   nginx-jiguoka
+Namespace:              default
+CreationTimestamp:      Sat, 22 Mar 2025 19:50:43 +0100
+Labels:                 app=nginx-jiguoka
+                        location=jiguoka
+Annotations:            deployment.kubernetes.io/revision: 1
+Selector:               app=nginx-jiguoka
+Replicas:               2 desired | 2 updated | 2 total | 2 available | 0 unavailable
+StrategyType:           RollingUpdate
+MinReadySeconds:        0
+RollingUpdateStrategy:  25% max unavailable, 25% max surge
+Pod Template:
+  Labels:  app=nginx-jiguoka
+  Containers:
+   nginx:
+    Image:        nginx
+    Port:         <none>
+    Host Port:    <none>
+    Environment:  <none>
+    Mounts:       <none>
+  Volumes:        <none>
+Conditions:
+  Type           Status  Reason
+  ----           ------  ------
+  Available      True    MinimumReplicasAvailable
+  Progressing    True    NewReplicaSetAvailable
+OldReplicaSets:  <none>
+NewReplicaSet:   nginx-jiguoka-6dcb747564 (2/2 replicas created)
+Events:          <none>
 
+# so here the standalone pod runs without any issues as it is not owned by the replicaset but the pods of the replicaset show that they are owned by the deployment
+kubectl get pod nginx-jiguoka-6dcb747564-cgddg -o jsonpath='{.metadata.ownerReferences}'
+[{"apiVersion":"apps/v1","blockOwnerDeletion":true,"controller":true,"kind":"ReplicaSet","name":"nginx-jiguoka-6dcb747564","uid":"cd21a80e-6834-4dd7-9de8-0c72fec9d8f8"}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+while the standalone pod have empty field for that command and will output noting: kubectl get pod nginx-jiguoka -o jsonpath='{.metadata.ownerReferences}'
