@@ -1,0 +1,32 @@
+# nginx-affinity.yaml Pod
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    app: nginx-affinity
+  name: nginx-affinity
+spec:
+  containers:
+  - image: nginx
+    name: nginx-affinity
+  affinity:
+    nodeAffinity:
+      # STRICT HARD RULES
+      requiredDuringSchedulingIgnoredDuringExecution:
+        #ORed between different `matchExpressions`
+        nodeSelectorTerms:
+        #ANDed between different `key`s inside `matchExpression`
+        - matchExpressions:
+          - key: location
+            operator: Exists
+          - key: number
+            operator: DoesNotExist
+      #SOFT RULES
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 1
+        preference:
+          matchExpressions:
+          - key: number
+            operator: Gt
+            values:
+            - "100"

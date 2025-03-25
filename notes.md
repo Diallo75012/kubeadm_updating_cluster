@@ -1796,6 +1796,35 @@ requiredDuringSchedulingIgnoredDuringExecution:
           values: [us-west]
 ```
 
+- 6) Scenario in which we will use again Japanese locations to show how `node` `taint` and `effect` work with `pod` `toleration`
+  - `NoExecute`: first create a deployment with 3 replicasets, then taint one node with effect `NoExecute` to `evict` the pod and show that it is recreated in another node, then taint another node with the same way to show that pods are again evited and will recreated somewhere else. then untaint one node and delete one of the deplyed pods which will be redeployed in the untainted node. Then do the same with the other tainted node by untainting it and deleting the one of the two pods which are on the same node and it will we rescheduled in another node.
+    - now use yaml file only:
+      ```yaml
+      tolerations:
+      - key: "special"
+        operator: "Equal"
+        value: "mangakissa"
+        effect: "NoSchedule"
+        tolerationSeconds: 30 # how long before being evicted
+      ```
+
+  - `NoSchedule`: use from here only `yaml` file
+      ```yaml
+      tolerations:
+      - key: "special"
+        operator: "Equal"
+        value: "mangakissa"
+        effect: "NoSchedule"
+      ```
+     Then taint the node with matching `taint` and `effect` and you should see that existing pods are not evicted
+     then create a standalone pod with a nodeSelector or Affinity to that node, to show that it won't be schedule there as it doesn't have the toleration for that node taint.
+     then add the toleration to the pod yaml file and show that now it can be scheduled there
+     then get rid of the toleration of the pod keeping the affinity or nodeselector and taint the node with `preferredNoSchedule` the soft version and see that pod will be scheduled there (maybe need to try...)
+
+  - `NoExecute`: create two pods with affinity of node selector just to maake sure those two are scheduled in the same node.
+    both will have a toleration with effect `NoExecute` but one has the `tolerationSeconds` and the other not
+    then taint the node where those two pods are located with same taint matching their toleration therefore effect `NoExecute`
+    You will see that the pod not having the `tolerationSeconds` will stay in the node while the other one will be evicted after those `tolerarionSeconds`
 _______________________________________________________________________________
 (From documentation for: `ownerReferences`)[https://kubernetes.io/docs/concepts/overview/working-with-objects/owners-dependents/]
 # Pod being acquired
