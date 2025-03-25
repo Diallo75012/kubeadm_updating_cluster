@@ -1,0 +1,22 @@
+# nginx-replicaset.yaml ReplicaSet
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  labels:
+    app: nginx
+  name: nginx-special-rs
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - image: nginx
+        name: nginx
+      nodeSelector:
+        location: jiguoka

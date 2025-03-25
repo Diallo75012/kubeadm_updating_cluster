@@ -1624,12 +1624,82 @@ Is done using keyword in `operator`:
 
 
 # Taints & Tolerations
+source: (doc taints and tolerations)[https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/]
+**NOTE:**
+if `.spec.nodeName` is specified in a `pod` then it will bypass the scheduler and not `taint` will be checked. It will be put in the `node` specified even if that one `pod` had a `toleration` not matching that `node` `taint` but it the node `taint` has a `NoExecute` `effect` in the `taint`, th epod will be ejected.
 
+## Taints
+- Taints are applied to `nodes` to tell which `pod` label is accepted to be scheduled in the `node`
+In this example, `node1` is `tainted` to not accept any `pod` sheduled having `label` key `special` with value `mangakissa`
+and the effect `:` `NoSchedule` to 'Not Schedule'.
+If this `taint` already exists it can be deleted by adding same line but with a minus at the end `-` like `NoSchedule-` 
+```bash
+kubectl taint nodes node1 special=mangakissa:NoSchedule
+```
 
+## Toleration
+- Tolerations are applied to `pods` to tell to scheduler where the `pod` can be scheduled
+In this example of the `PodSpec` part of `pod` definition, we have two different ways of doing it: one with key/value and another with only key
 
+```yaml
+# key/value
+tolerations:
+# node taint need to match those fields when `Equal` `operator:` is used
+- key: "special" # node tiant need to match key
+  operator: "Equal"
+  value: "mangakissa" # node taint need to match value
+  effect: "NoSchedule" # node taint need to match effect
 
+# key only
+tolerations:
+# node taint need to match those fields when `Exists` `operator:` is used
+- key: "special" # node taint need to match key
+  operator: "Exists"
+  effect: "NoSchedule" # node taint need to match effect
+```
 
+### rules for `operator` in `toleration` `pod.spec`:
+- `operator:` default value is `Equal` then a `value:` field should be specified
+- if `operator:` is `Exists` then no `value:` field should be specified, it will match on `key:` and `effect:`
 
+### rules for empty field
+- if `key:` is empty then `operator:` have to be `Exists` and it will match all key/values. AND, `effect:` still need to match at the same time
+- if `effect:` is empty then it will match all `effect:` with `key: <your_key>``
+
+### values taken by `effect`
+- `NoExecute`:
+  - `taint` not tolerated: pods are evicted from the node
+  - `taint` tolerated:
+    - `tolerationSeconds` indicated in `pod`: after that timelapse the `pod` will be evicted from `node`
+    - `tolerationSeconds` not indicated in `pod`: No eviction, `pod` will remain forever in `node`
+- `NoSchedule`: existing `pod` on `node` not evicted, only `pod` with matching `toleration` can be schedule in `node` otherwise not
+- `PreferredNoSchedule`: it is a `soft NoSchedule`, so scheduler will try to not put `pod` on `node` tainted
+  or `pod` spec without `toleration` indicated, but it is not guaranteed.
+
+### rules for mutiple `toleration:` indicated in same pod
+Here the scheduler will work fine but use those as filters, checking `nodes` `taints`, the `pod` `effects` and `operators`
+
+## list of `kubernetes` automatic `taints`
+- `node.kubernetes.io/not-ready`: Node is not ready. This corresponds to the `NodeCondition` `Ready="False"`.
+- `node.kubernetes.io/unreachable`: Node is unreachable from the node controller. This corresponds to the `NodeCondition` `Ready="Unknown"`.
+- `node.kubernetes.io/memory-pressure`: Node has memory pressure.
+- `node.kubernetes.io/disk-pressure`: Node has disk pressure.
+- `node.kubernetes.io/pid-pressure`: Node has PID pressure.
+- `node.kubernetes.io/network-unavailable`: Node's network is unavailable.
+- `node.kubernetes.io/unschedulable`: Node is unschedulable.
+- `node.cloudprovider.kubernetes.io/uninitialized`: For cloud to have time to make setup. After a controller from the `cloud-controller-manager` initializes this `node`, the `kubelet` removes this `taint`.
+
+```yaml
+tolerations:
+- key: "node.kubernetes.io/unreachable"
+  operator: "Exists"
+  effect: "NoExecute"
+  tolerationSeconds: 6000 # unless you set it like that it is automatically set to 300 (5mn) by the the controller
+```
+
+## example `node drain` of `taints` automatically applied to the `node`
+When a `node` is `drained`, the `node controller` or `kubelet` adds `taints` with `NoExecute effect`. 
+It also adds `node.kubernetes.io/not-ready` and `node.kubernetes.io/unreachable`
 
 
 scenarios:
@@ -1771,6 +1841,9 @@ apiVersion: apps/v1
 kind: ReplicaSet
 metadata:
   name: nginx-orphan-rs
+  # make sure to not forget to add here the label matching the one of the deployment otherwise this replicaset won't be acquired by the deployment
+  labels: 
+    app: nginx
 spec:
   replicas: 2
   selector:

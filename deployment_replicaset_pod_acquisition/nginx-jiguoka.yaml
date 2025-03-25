@@ -1,13 +1,13 @@
-# nginx-jiguoka-pod
+# nginx-jiguoka-standalone.yaml Pod
 apiVersion: v1
 kind: Pod
 metadata:
-  name: nginx-standalone
   labels:
     app: nginx
+  name: nginx-jiguoka-standalone
 spec:
   containers:
-    - name: nginx
-      image: nginx
+  - image: nginx
+    name: nginx
   nodeSelector:
     location: jiguoka
