@@ -1,0 +1,21 @@
+# nginx-omotesando.yaml Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: nginx-tokyo-center
+  name: nginx-omotesando
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nginx-omotesando
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: nginx-omotesando
+    spec:
+      containers:
+      - image: nginx
+        name: nginx

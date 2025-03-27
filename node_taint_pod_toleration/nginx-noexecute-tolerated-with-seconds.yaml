@@ -1,0 +1,20 @@
+# nginnoexecute-tolerated-with-seconds.yaml Pod NoExecute + TolerationSeconds
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    app: nginx-tolerate-noexecute
+  name: nginx-with-toleration-second
+spec:
+  containers:
+    - name: nginx-tolerate-noexecute
+      image: nginx
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+            - key: junko
+              operator: Exists
+  tolerations:
+    - { key: "shibuya", operator: "Equal", value: "present", effect: "NoExecute", tolerationSeconds: 45 }

@@ -727,7 +727,7 @@ kubectl delete ns nginx
 ```
 
 ________________________________________________________________________________________________________________
-# Next
+# cNext
 - [ ] update the cluster versions until we reach 1.32 (we are at 1.27)
     so we will have to do same process several times and fix any compatibility issues along the way.
     need to check supported versions ranges for each kubeadm updated version
@@ -799,7 +799,10 @@ curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | sudo gpg --
 echo "deb [signed-by=/usr/share/keyrings/kubernetes-archive-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /" | sudo tee /etc/apt/sources.list.d/kubernetes.list
 sudo apt update
 # check the versions
-c
+kubeadm version
+kubectl version
+kubelet --version
+containerd --version
 # then run next command with the right version:
 `sudo apt install -y kubeadm=1.28.10-00`
 ```
@@ -1829,6 +1832,7 @@ _______________________________________________________________________________
 (From documentation for: `ownerReferences`)[https://kubernetes.io/docs/concepts/overview/working-with-objects/owners-dependents/]
 # Pod being acquired
 cat pod.yaml
+```yaml
 apiVersion: v1
 kind: Pod
 metadata:
@@ -1839,11 +1843,12 @@ spec:
   containers:
     - name: nginx
       image: nginx
+```
 
-kubectl get pod <standalone_pod_name> -o jsonpath='{.metadata.ownerReferences}'
-
+`kubectl get pod <standalone_pod_name> -o jsonpath='{.metadata.ownerReferences}'`
 
 cat replicaset.yaml
+```yaml
 apiVersion: apps/v1
 kind: ReplicaSet
 metadata:
@@ -1861,11 +1866,14 @@ spec:
       containers:
         - name: nginx
           image: nginx
+```
 
-kubectl get pod <standalone_pod_name> -o jsonpath='{.metadata.ownerReferences}'
+`kubectl get pod <standalone_pod_name> -o jsonpath='{.metadata.ownerReferences}'`
 
 # Replicset being acquired
+
 cat replicaset.yaml
+```yaml
 apiVersion: apps/v1
 kind: ReplicaSet
 metadata:
@@ -1886,11 +1894,13 @@ spec:
       containers:
       - name: nginx
         image: nginx
+```
 
-kubectl get rs <replicaset_name> -o jsonpath='{.metadata.ownerReferences}'
+`kubectl get rs <replicaset_name> -o jsonpath='{.metadata.ownerReferences}'`
 
 
 cat deployment.yaml
+```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -1908,6 +1918,400 @@ spec:
       containers:
       - name: nginx
         image: nginx
+```
+`kubectl get rs <replicaset_name> -o jsonpath='{.metadata.ownerReferences}'`
 
-kubectl get rs <replicaset_name> -o jsonpath='{.metadata.ownerReferences}'
+____________________________________________________________________
 
+# DNS ACCESSING PODS THROUGH SERVICES USING NAMES
+
+## PODS IN SAME NAMESPACE
+As IPs can change there is in Kubernetes native `DNS` resolution:
+- services need to be created first (before pod for the pod to be able to capture the env var set automaticcally by Kubernetes) if using IPs instead
+  but in general using DNS name of the POD and SVC and NAMESPACE and CLUSTER would reolve to accessing the pod.
+- `resolv.conf` file is where the DNS of the service will be indicated
+
+```bash
+k exec -it -n nginx nginx-pod -- sh
+# cat /etc/resolv.conf
+search nginx.svc.cluster.local svc.cluster.local cluster.local localdomain
+nameserver 10.96.0.10
+options ndots:5
+```
+So here the service name `nginx` is indicated in the `resolv.conf` file for the pod to be reached at `<pod_name>.nginx.svc.cluster.local`
+So another pod in another namespace could pass throught the `ClusterIP` service named `nginx` in the namespace `nginx` and find the pod
+
+**Experiement DNS Using Imperative Commands**
+We will make a service that has a `spec.selector` pointing to a pod `label` and will create the pod with the same label , all in same namespaces
+As we are using `names` we will be able to use `DNS` names and `not unstable` `IPs`, therefore, there is no rule in the order in which we will create the service, it can be after or before the pod creation
+
+. 1) Run pod with label
+```bash
+k run nginx --image=nginx \
+  --restart=Never \
+  --namespace=nginx \
+  --labels=app=nginx
+```
+
+. 2) Expose the pod to enable `DNS` resolution through a service `nginx-service` with a `selector` pointing to the `pod` `label`
+After that we need to expose the service to get `DNS` `nginx-service.nginx.svc.cluster.local` ready and callable from anyu other pod in the cluster:
+Here we do something easy to understand but policies can be created to limit access to only pods inside the same namespace for example as namespaces are made for that to separate concerns:
+```bash
+k expose pod nginx \
+  --port=80 \
+  --target-port=80 \
+  --name=nginx-service \
+  --namespace=nginx \
+  --selector=app=nginx
+```
+
+. 3) Create another temparary pod to test that `nginx` pod is reachable through `DNS` resolution `nginx-service.dev.svc.cluster.local`
+```bash
+k run debug --rm -it --image=busybox --restart=Never \
+  --namespace=nginx -- /bin/sh
+
+# curl not available so used wget which pooled the `index.html` page meaning that the pod is accessible through the service
+wget http://nginx-service
+Outputs:
+Connecting to nginx-service (10.110.245.196:80)
+saving to 'index.html'
+index.html           100% |************************************************************************************************************************|   615  0:00:00 ETA
+'index.html' saved
+
+# then we cat the file pulled
+cat index.html 
+Outputs:
+<!DOCTYPE html>
+<html>
+<head>
+<title>Welcome to nginx!</title>
+<style>
+html { color-scheme: light dark; }
+body { width: 35em; margin: 0 auto;
+font-family: Tahoma, Verdana, Arial, sans-serif; }
+</style>
+</head>
+<body>
+<h1>Welcome to nginx!</h1>
+<p>If you see this page, the nginx web server is successfully installed and
+working. Further configuration is required.</p>
+
+<p>For online documentation and support please refer to
+<a href="http://nginx.org/">nginx.org</a>.<br/>
+Commercial support is available at
+<a href="http://nginx.com/">nginx.com</a>.</p>
+
+<p><em>Thank you for using nginx.</em></p>
+</body>
+</html>
+outputs
+
+# nslookup
+# nslookup nginx-service.nginx.svc.cluster.local
+Server:         10.96.0.10
+Address:        10.96.0.10:53
+
+
+Name:   nginx-service.nginx.svc.cluster.local
+Address: 10.110.245.196
+```
+so here we get confirmation
+
+
+## DNS RESOLUTION FROM POD IN ANOTHER NAMESPACE
+
+. 4) Check if other pods in other namespaces can use the `DNS` to reach the pod
+Here pod created in `default` namespace and will access the pod in `nginx` namespace using the `DNS` which maps the `pod` through the `service` name
+```bash
+k run debug --rm -it --image=busybox --restart=Never -- /bin/sh
+If you don't see a command prompt, try pressing enter.
+
+# nlookup way
+/ # nslookup nginx-service.nginx.svc.cluster.local
+Outputs:
+Server:         10.96.0.10
+Address:        10.96.0.10:53
+
+
+Name:   nginx-service.nginx.svc.cluster.local
+Address: 10.110.245.196
+
+# wget way but this this time as we are not in same namesapce we need to provide full `DNS` with namespace
+/ # wget nginx-service.nginx.svc.cluster.local
+Outputs
+Connecting to nginx-service.nginx.svc.cluster.local (10.110.245.196:80)
+saving to 'index.html'
+index.html           100% |************************************************************************************************************************|   615  0:00:00 ETA
+'index.html' saved
+
+# then we check that the file is nginx index.html
+/ # cat index.html 
+Outputs:
+<!DOCTYPE html>
+<html>
+<head>
+<title>Welcome to nginx!</title>
+<style>
+html { color-scheme: light dark; }
+body { width: 35em; margin: 0 auto;
+font-family: Tahoma, Verdana, Arial, sans-serif; }
+</style>
+</head>
+<body>
+<h1>Welcome to nginx!</h1>
+<p>If you see this page, the nginx web server is successfully installed and
+working. Further configuration is required.</p>
+
+<p>For online documentation and support please refer to
+<a href="http://nginx.org/">nginx.org</a>.<br/>
+Commercial support is available at
+<a href="http://nginx.com/">nginx.com</a>.</p>
+
+<p><em>Thank you for using nginx.</em></p>
+</body>
+</html>
+```
+
+## SETTING POD DNS RESOLV.CONF CONTENT FROM YAML CREATION
+eg: source: (form doc kubernetes)[https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/]
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  namespace: default
+  name: dns-example
+spec:
+  containers:
+    - name: test
+      image: nginx
+  dnsPolicy: "None"
+  dnsConfig:
+    nameservers:
+      - 192.0.2.1 # this is an example
+    searches:
+      - ns1.svc.cluster-domain.example
+      - my.dns.search.suffix
+    options:
+      - name: ndots
+        value: "2"
+      - name: edns0
+```
+
+## SETUP NETWORK POLICY AS DNS IS RESOLVING ANY SERVICE MAPPED TO POD INSIDE THE CLUSTER
+source: (Network Policies Doc)[https://kubernetes.io/docs/concepts/services-networking/network-policies/]
+
+**Important:** By default the Kubernetes allow all traffic and only when you set a rules it will deny all other rules:
+`kind: NetworkPolicy` is deny all when set and in the policy you are going to allow `ingress`/`egress`
+therefore, you just set the policy and put what is allowed in the rest will be denied.
+And this denial is activated because you have set a rule `ingress` or `egress`. without rule all is allowed.
+
+
+here we have an example in how to setup a policy.
+`ingress` and `egress` can be setup, refer to documentation for `egress` as here we are going to do only `ingress`
+`egress` is the same anyway but just you replace `ingress` examples with `egress` or just refer to doc as it might change
+
+
+### INGRESS:
+- (Ingress rules) allows connections to all pods in the default namespace with the label role=db on TCP port 6379 from:
+      - any pod in the default namespace with the label role=frontend
+      - any pod in a namespace with the label project=myproject
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: test-network-policy
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      role: db
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+            # we just see `namespaceSelector` and `podSelector` not the third one `ipBlock`
+    - namespaceSelector:
+        matchLabels:
+          project: myproject
+    - podSelector:
+        matchLabels:
+          role: frontend
+    ports:
+    - protocol: TCP
+      port: 6379
+```
+
+### DENY ALL
+
+eg: deny all traffic
+```yaml
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+```
+
+### ANDed VS ORed RULES
+
+eg: ANDed vs ORed
+- ANDed
+```yaml
+  ingress:
+  # here `single` element in the `- from` (`- namespaceSelector`) which make it `ANDed`
+  - from:
+    # note here that here only `namespaceSelector` have the `-` which enabled the `AND`for the next rule `podSelector`
+    - namespaceSelector:
+        matchLabels:
+          user: alice
+      podSelector:
+        matchLabels:
+          role: client
+```
+- ORed
+```yaml
+  ingress:
+  # here two elements in the `- from` (`- namespaceSelector`, `- podSelector`) which makes it ORed
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          user: alice
+    # note that here we have `-` which is enabling the `OR` instead of `AND`
+    - podSelector:
+        matchLabels:
+          role: client
+```
+
+
+1) scenario that shows how dns works, very simple, within same namespace creating pod and exposing with a service and creating a third pod that would use dns to access the pod using DNS (curl/wget/nslookup whatever works)
+then do same scenario but this time the thirst pod is created outside of the namespace and curl/wget/nslookup again to show that DNs means that pods from other namespaces can resolve to the pod using DNS call
+2) do another scenario showing now ow to setup a pods and determining the reolv.conf of the pod content so that pod can call that other pod through another service dedicated to that other pod. maybe customize nginx in that namespace with different one and different messages index.html pages and having each different services attached to those. and go inside pod to show that it can resolve that pod
+eg: source: (form doc kubernetes)[https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/]
+apiVersion: v1
+kind: Pod
+metadata:
+  namespace: default
+  name: dns-example
+spec:
+  containers:
+    - name: test
+      image: nginx
+  dnsPolicy: "None"
+  dnsConfig:
+    nameservers:
+      - 192.0.2.1 # this is an example
+    searches:
+      - ns1.svc.cluster-domain.example
+      - my.dns.search.suffix
+    options:
+      - name: ndots
+        value: "2"
+      - name: edns0
+
+3) now make it more complexe by making htis example more interesting by adding a network policy as before even if not in resolv conf the pod could use the kubernetes native dns call to reach the other pod anyway, but this policy would say no ingress accepted from other namespaces for that pod specifically but the other pod would be still reachable
+source services can be created with name on ports which would be included in the DNS to target that port so the service behind it, can be nice to use to target the different nginx behind it with different html pages: (doc)[https://kubernetes.io/docs/concepts/services-networking/service/]
+o here say that network plugins are required and that we are using `Calico` already installed in the cluster and it is a prerequisite
+  - example from doc:
+    - (Ingress rules) allows connections to all pods in the default namespace with the label role=db on TCP port 6379 from:
+      - any pod in the default namespace with the label role=frontend
+      - any pod in a namespace with the label project=myproject
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: test-network-policy
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      role: db
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+            # we just see `namespaceSelector` and `podSelector` not the third one `ipBlock`
+    - namespaceSelector:
+        matchLabels:
+          project: myproject
+    - podSelector:
+        matchLabels:
+          role: frontend
+    ports:
+    - protocol: TCP
+      port: 6379
+```
+
+eg: deny all traffic
+```yaml
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+```
+
+eg: ANDed vs ORed
+- ANDed
+```yaml
+  ingress:
+  # here `single` element in the `- from` (`- namespaceSelector`) which make it `ANDed`
+  - from:
+    # note here that here only `namespaceSelector` have the `-` which enabled the `AND`for the next rule `podSelector`
+    - namespaceSelector:
+        matchLabels:
+          user: alice
+      podSelector:
+        matchLabels:
+          role: client
+```
+- ORed
+```yaml
+  ingress:
+  # here two elements in the `- from` (`- namespaceSelector`, `- podSelector`) which makes it ORed
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          user: alice
+    # note that here we have `-` which is enabling the `OR` instead of `AND`
+    - podSelector:
+        matchLabels:
+          role: client
+```
+
+### ALLOW ALL INGRESS
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-all-ingress
+spec:
+  podSelector: {}
+  ingress:
+  - {}
+  policyTypes:
+  - Ingress
+```
+
+k run nginx-pod --port=80  --labels=location=shibuya --image=nginx
+k run debug --rm -it --image=busybox --restart=Never   --namespace=nginx -- /bin/sh
+k expose pod nginx   --port=80   --target-port=80  --namespace=nginx
+k expose pod nginx-pod --port=80 --target=port=80 --name=nginx-service --selector=location=shibuya --type=NodePort
+
+_____________________________________________________________________
+# Next
+- [ ] update the cluster versions until we reach 1.32 (we are at 1.27)
+    so we will have to do same process several times and fix any compatibility issues along the way.
+    need to check supported versions ranges for each kubeadm updated version
+- [ ] create thsoe scripts in bash that will upgrade controller node and worker nodes
+      and then create an ansible playbook having variables set ina file for containerd version and kubeadm version to upgrade nodes
+      then create a rust app that would accept as input terminal variables the versions and start the ansible playbook
+      -  probably need to use ansible until it works to automate one version upgrade 1.28 to 1.29 fully
+      -  then create the rust application as it would be easier as we are sure that the playbook is not failing otherwise too much debugging layers.

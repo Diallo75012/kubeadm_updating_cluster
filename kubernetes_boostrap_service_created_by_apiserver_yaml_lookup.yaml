@@ -1,0 +1,30 @@
+# had delete the `kubernetes` service because of `autocompletion` putting it just after my command but it has been recreated automatically
+# but in case we can keep this here as `kubeadm` has this mecanism but not all kubernetes clusters, then it would require to create it manually
+apiVersion: v1
+kind: Service
+metadata:
+  creationTimestamp: "2025-03-27T22:53:56Z"
+  labels:
+    component: apiserver
+    provider: kubernetes
+  name: kubernetes
+  namespace: default
+  resourceVersion: "308074"
+  uid: 1df4672d-cf87-415b-9bdf-81dc6d71b6f6
+spec:
+  clusterIP: 10.96.0.1
+  clusterIPs:
+  - 10.96.0.1
+  internalTrafficPolicy: Cluster
+  ipFamilies:
+  - IPv4
+  ipFamilyPolicy: SingleStack
+  ports:
+  - name: https
+    port: 443
+    protocol: TCP
+    targetPort: 6443
+  sessionAffinity: None
+  type: ClusterIP
+status:
+  loadBalancer: {}
