@@ -1,0 +1,29 @@
+# network-policy-aishibuya-hachiko.yaml NetworkPolicy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: aishibuya-network-policy
+  namespace: aishibuya
+spec:
+  podSelector:
+    matchLabels:
+      shibuya-location: hachiko
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    # ANDed as no `-` at `podSelector`
+    - namespaceSelector:
+        matchLabels:
+          # need to label the default namespace with that `zone=tokyo`
+          zone: tokyo
+      podSelector:
+        matchLabels:
+          shibuya-fan: access
+    ports:
+    - protocol: TCP
+      port: 80
+#spec:
+#  podSelector: {}
+#  policyTypes:
+#  - Ingress

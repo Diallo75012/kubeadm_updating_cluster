@@ -2084,18 +2084,62 @@ spec:
   containers:
     - name: test
       image: nginx
+  # can be `Default`, `Clusterfirst`, `ClusterFirstWithHostNet` or `None`
+  # when `None` we can custom config  `resolv.comf` of the pod
   dnsPolicy: "None"
+  # all fields are not required, you can just choose to use one
+  # or `nameservers`, or `searches` or `options`
+  # but if you want more control you probably want to use them all
   dnsConfig:
+    # get the `nameserver ip of the cluster by running this command:
+    # kubectl get svc -n kube-system kube-dns
     nameservers:
-      - 192.0.2.1 # this is an example
+      - 10.96.0.10
+    # here we put what services we want to reach using Kubernetes DNS way
     searches:
-      - ns1.svc.cluster-domain.example
+      # <service_anme.name_space.cluster.local>
+      # or <namespace.cluster.local>
+      - ns1.svc.cluster.local
       - my.dns.search.suffix
+    # example of options that you find in `/etc/resolv.conf`
     options:
+      # `ndots` is if lower thant `2` dots here
+      # will try append the above `searches` to the `curl <domain>`
+      # so will try `<domain>.ns1.svc.cluster.local`
+      # then will try `<domain>.my.dns.search.suffix` if the first doesn't work and so on...
       - name: ndots
+        # higer value more checks and latency, lower value better performance but could skip some
         value: "2"
       - name: edns0
+      - name: timeout
+        value: "2"
 ```
+
+- `dnsPolicy` can take different values:
+dnsPolicy	| Description	|Use When
+------------+---------------+-----------
+ClusterFirst (default)	| Uses cluster DNS (CoreDNS). Can resolve Kubernetes service names across namespaces.	| ✅ Most common for standard Pods|
+------------------------+---------------------------------------------------------------------------------------+----------------------------------+
+ClusterFirstWithHostNet	| Same as above but used when Pod uses hostNetwork: true	| ✅ Use when Pod shares host network|
+------------------------+-----------------------------------------------------------+-------------------------------------+
+Default	Uses the node’s /etc/resolv.conf. | Can’t resolve Kubernetes service DNS.	| ❌ Avoid unless you want to use external DNS only|
+------------------------------------------+-----------------------------------------+--------------------------------------------------+
+None	| Lets you manually define DNS config via dnsConfig in the Pod spec	| ✅ Use if you want full custom DNS entries, e.g., override search domains or stub resolvers|
+--------+-------------------------------------------------------------------+--------------------------------------------------------------------------------------------+
+
+**Summary**
+- `ClusterFirst`: is the default one using CorDNS of Kubernetes
+- `ClusterfirstWithHostNet`: Only when `hostNetwork: true`, when pod shares host network
+- `Default`: not the 'default' as the name says this only for external DNS
+- `None`: when setting custom DNS in pods via `dnsConfig` (/etc/resolv.conf)
+  - `nameservers` ip of the cluster is given by CoreDNS `kube-dns` in `kube-system` namespace:
+```bash
+kubectl get svc -n kube-system kube-dns
+Outputs
+NAME       TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)                  AGE
+kube-dns   ClusterIP   10.96.0.10   <none>        53/UDP,53/TCP,9153/TCP   630d
+```
+
 
 ## SETUP NETWORK POLICY AS DNS IS RESOLVING ANY SERVICE MAPPED TO POD INSIDE THE CLUSTER
 source: (Network Policies Doc)[https://kubernetes.io/docs/concepts/services-networking/network-policies/]
@@ -2188,7 +2232,7 @@ eg: ANDed vs ORed
 
 
 1) scenario that shows how dns works, very simple, within same namespace creating pod and exposing with a service and creating a third pod that would use dns to access the pod using DNS (curl/wget/nslookup whatever works)
-then do same scenario but this time the thirst pod is created outside of the namespace and curl/wget/nslookup again to show that DNs means that pods from other namespaces can resolve to the pod using DNS call
+then do same scenario but this time the third pod is created outside of the namespace and curl/wget/nslookup again to show that DNs means that pods from other namespaces can resolve to the pod using DNS call
 2) do another scenario showing now ow to setup a pods and determining the reolv.conf of the pod content so that pod can call that other pod through another service dedicated to that other pod. maybe customize nginx in that namespace with different one and different messages index.html pages and having each different services attached to those. and go inside pod to show that it can resolve that pod
 eg: source: (form doc kubernetes)[https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/]
 apiVersion: v1

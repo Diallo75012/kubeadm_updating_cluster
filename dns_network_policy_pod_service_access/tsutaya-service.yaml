@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: nginx
+  name: tsutaya-service
+  namespace: aishibuya
+spec:
+  ports:
+  - name: access-tsutaya
+    port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    shibuya-location: tsutaya
+  type: ClusterIP

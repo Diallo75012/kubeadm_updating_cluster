@@ -1,0 +1,27 @@
+# pod_resolv_conf_services_having_netpolicy.yaml Pod
+apiVersion: v1
+kind: Pod
+metadata:
+  namespace: default
+  name: nginx-tokyo
+  labels:
+    shibuya-fan: access
+spec:
+  containers:
+    - name: nginx-tokyo-connect-to-aishibuya
+      image: nginx
+  # can be `Default`, `Clusterfirst`, `ClusterFirstWithHostNet` or `None`
+  # when `None` we can custom config  `resolv.comf` of the pod
+  dnsPolicy: "None"
+  dnsConfig:
+    # obtained ip by running: `kubectl get svc -n kube-system kube-dns`
+    nameservers:
+      - 10.96.0.10
+    # here we put what services we want to reach using Kubernetes DNS way
+    searches:
+      # <name_space.cluster.local>
+      # OR also can add: <service_name.namespace.svc.cluster.local>
+      - aishibuya.svc.cluster.local
+    options:
+      - name: ndots
+        value: "5"

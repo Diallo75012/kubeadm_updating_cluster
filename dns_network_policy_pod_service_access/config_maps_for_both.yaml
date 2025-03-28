@@ -1,0 +1,29 @@
+# config_map_for_both.yaml
+---
+#apiVersion: v1
+#kind: ConfigMap
+#metadata:
+#  name: normal-nginx-message
+#  namespace: nginx
+#data:
+#  index.html: |
+#    <html>
+#    <h1 style="color:green;">Nginx</h1>
+#    </br>
+#    <h1 style="color:green;">Nginx Pod Successfully Reached</h1>
+#    </html>
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: creditizens-message
+  namespace: creditizens
+data:
+  index.html: |
+    <html>
+    <h1 style="color:orange;">At The JR Station</h1>
+    </br>
+    <h1 style="color:red;">"You never .... two... Mate!"</h1>
+    <p>Witness: "Hachiko Sama"</p>
+    </html>

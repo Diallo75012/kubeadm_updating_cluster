@@ -1,0 +1,29 @@
+# pod_resolv_conf_to_different_services.yaml Pod
+apiVersion: v1
+kind: Pod
+metadata:
+  namespace: default
+  name: nginx-dns-searcher
+spec:
+  containers:
+    - name: nginx-proxy-to-two-other-pods-through-services
+      image: nginx
+  # can be `Default`, `Clusterfirst`, `ClusterFirstWithHostNet` or `None`
+  # when `None` we can custom config  `resolv.comf` of the pod
+  dnsPolicy: "None"
+  dnsConfig:
+    # obtained ip by running: `kubectl get svc -n kube-system kube-dns`
+    nameservers:
+      - 10.96.0.10
+    # here we put what services we want to reach using Kubernetes DNS way
+    searches:
+      # <name_space.cluster.local>
+      # OR also can add: <service_name.namespace.svc.cluster.local>
+      - nginx.svc.cluster.local
+      - creditizens.svc.cluster.local
+      # OR also can add: <service_name.namespace.svc.cluster.local>
+      - nginx-normal-service.nginx.svc.cluster.local
+      - creditizens-nginx-service.creditizens.svc.cluster.local
+    options:
+      - name: ndots
+        value: "5"

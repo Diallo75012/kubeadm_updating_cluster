@@ -1,0 +1,28 @@
+# config_map_for_aishibuya.yaml
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aishibuya-hachiko-message
+  namespace: aishibuya
+data:
+  index.html: |
+    <html>
+    <h1 style="color:green;">Hachiko Statute Will Be Renovated</h1>
+    </br>
+    <h1 style="color:green;">The Refreshed Hachiko Will Be Available From December 2025.</h1>
+    </html>
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aishibuya-tsutaya-message
+  namespace: aishibuya
+data:
+  index.html: |
+    <html>
+    <h1 style="color:orange;">Starbuck Will Be Closed Till November 2025</h1>
+    </br>
+    <h1 style="color:red;">But Tsutaya Upper Stairs Will Still Be Open.</h1>
+    </html>
