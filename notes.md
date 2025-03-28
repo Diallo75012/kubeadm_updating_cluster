@@ -2349,6 +2349,321 @@ k run debug --rm -it --image=busybox --restart=Never   --namespace=nginx -- /bin
 k expose pod nginx   --port=80   --target-port=80  --namespace=nginx
 k expose pod nginx-pod --port=80 --target=port=80 --name=nginx-service --selector=location=shibuya --type=NodePort
 
+# networkpolicy to prevent all ingress traffic to hachiko pod and permit only the right labelled namespace and the right labelled pod
+cat network-policy-aishibuya-hachiko.yaml 
+# network-policy-aishibuya-hachiko.yaml NetworkPolicy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: aishibuya-network-policy
+  namespace: aishibuya
+spec:
+  podSelector:
+    matchLabels:
+      shibuya-location: hachiko
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    # ANDed as no `-` at `podSelector`
+    - namespaceSelector:
+        matchLabels:
+          # need to label the default namespace with that `zone=tokyo`
+          zone: tokyo
+      podSelector:
+        matchLabels:
+          shibuya-fan: access
+    ports:
+    - protocol: TCP
+      port: 80
+#spec:
+#  podSelector: {}
+#  policyTypes:
+#  - Ingress
+
+
+# pods running in defaultnamespace which will be used in `exec -it` mode to use dns lookups, busybox for nslookup and nginx pods with different labels for curl commands
+cat pod_resolv_conf_services_without_netpolicy_busybox.yaml 
+# pod_resolv_conf_services_having_netpolicy_busybox.yaml Pod
+apiVersion: v1
+kind: Pod
+metadata:
+  namespace: default
+  name: busy-tokyo
+  #name: nginx2-tokyo
+spec:
+  containers:
+    #- name: nginx2-tokyo-connect-to-aishibuya
+    #  image: nginx
+    - name: busy-tokyo-connect-to-aishibuya
+      image: busybox:1.35
+      # this necessary as busybox exits and pod will never stay alive so we need to sleep it for a while so we can do our work
+      command: ["sleep", "36000"]
+  # can be `Default`, `Clusterfirst`, `ClusterFirstWithHostNet` or `None`
+  # when `None` we can custom config  `resolv.comf` of the pod
+  dnsPolicy: "None"
+  dnsConfig:
+    # obtained ip by running: `kubectl get svc -n kube-system kube-dns`
+    nameservers:
+      - 10.96.0.10
+    # here we put what services we want to reach using Kubernetes DNS way
+    searches:
+      # <name_space.cluster.local>
+      # OR also can add: <service_name.namespace.svc.cluster.local>
+      - aishibuya.svc.cluster.local
+    options:
+      - name: ndots
+        value: "5"
+
+cat pod_resolv_conf_services_without_netpolicy_nginx2.yaml
+# pod_resolv_conf_services_having_netpolicy_nginx2.yaml Pod
+apiVersion: v1
+kind: Pod
+metadata:
+  namespace: default
+  #name: busy-tokyo
+  name: nginx2-tokyo
+spec:
+  containers:
+    - name: nginx2-tokyo-connect-to-aishibuya
+      image: nginx
+    #- name: busy-tokyo-connect-to-aishibuya
+      #image: busybox:1.35
+      # this necessary as busybox exits and pod will never stay alive so we need to sleep it for a while so we can do our work
+      #command: ["sleep", "36000"]
+  # can be `Default`, `Clusterfirst`, `ClusterFirstWithHostNet` or `None`
+  # when `None` we can custom config  `resolv.comf` of the pod
+  dnsPolicy: "None"
+  dnsConfig:
+    # obtained ip by running: `kubectl get svc -n kube-system kube-dns`
+    nameservers:
+      - 10.96.0.10
+    # here we put what services we want to reach using Kubernetes DNS way
+    searches:
+      # <name_space.cluster.local>
+      # OR also can add: <service_name.namespace.svc.cluster.local>
+      - aishibuya.svc.cluster.local
+    options:
+      - name: ndots
+        value: "5"
+
+cat pod_resolv_conf_services_having_netpolicy.yaml 
+# pod_resolv_conf_services_having_netpolicy.yaml Pod
+apiVersion: v1
+kind: Pod
+metadata:
+  namespace: default
+  name: nginx-tokyo
+  labels:
+    shibuya-fan: access
+spec:
+  containers:
+    - name: nginx-tokyo-connect-to-aishibuya
+      image: nginx
+  # can be `Default`, `Clusterfirst`, `ClusterFirstWithHostNet` or `None`
+  # when `None` we can custom config  `resolv.comf` of the pod
+  dnsPolicy: "None"
+  dnsConfig:
+    # obtained ip by running: `kubectl get svc -n kube-system kube-dns`
+    nameservers:
+      - 10.96.0.10
+    # here we put what services we want to reach using Kubernetes DNS way
+    searches:
+      # <name_space.cluster.local>
+      # OR also can add: <service_name.namespace.svc.cluster.local>
+      - aishibuya.svc.cluster.local
+    options:
+      - name: ndots
+        value: "5"
+
+
+k get pods
+NAME           READY   STATUS    RESTARTS   AGE
+busy-tokyo     1/1     Running   0          93m
+nginx-tokyo    1/1     Running   0          50m
+nginx2-tokyo   1/1     Running   0          5s
+
+# pods applied to the cluster with different config maps for different messages display and configmaps in one unique file
+cat nginx_aishibuya_tsutaya_pod.yaml 
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    app: nginx
+    shibuya-location: tsutaya
+  name: nginx-tsutaya
+  namespace: aishibuya
+spec:
+  containers:
+  - name: nginx
+    image: nginx
+    volumeMounts:
+    - name: creditizens-aishibuya-custom-message
+      mountPath: /usr/share/nginx/html/
+  volumes:
+  - name: creditizens-aishibuya-custom-message
+    configMap:
+      name: aishibuya-tsutaya-message
+
+
+cat nginx_aishibuya_hachiko_pod.yaml 
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    app: nginx
+    shibuya-location: hachiko
+  name: nginx-hachiko
+  namespace: aishibuya
+spec:
+  containers:
+  - name: nginx
+    image: nginx
+    volumeMounts:
+    - name: creditizens-aishibuya-custom-message
+      mountPath: /usr/share/nginx/html/
+  volumes:
+  - name: creditizens-aishibuya-custom-message
+    configMap:
+      name: aishibuya-hachiko-message
+
+cat config_maps_for_aishibuya.yaml 
+# config_map_for_aishibuya.yaml
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aishibuya-hachiko-message
+  namespace: aishibuya
+data:
+  index.html: |
+    <html>
+    <h1 style="color:green;">Hachiko Statute Will Be Renovated</h1>
+    </br>
+    <h1 style="color:green;">The Refreshed Hachiko Will Be Available From December 2025.</h1>
+    </html>
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aishibuya-tsutaya-message
+  namespace: aishibuya
+data:
+  index.html: |
+    <html>
+    <h1 style="color:orange;">Starbuck Will Be Closed Till November 2025</h1>
+    </br>
+    <h1 style="color:red;">But Tsutaya Upper Stairs Will Still Be Open.</h1>
+    </html>
+
+
+# the services applied to cluster
+cat hachiko-service.yaml 
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: nginx
+  name: hachiko-service
+  namespace: aishibuya
+spec:
+  ports:
+  - name: access-hachiko
+    port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    shibuya-location: hachiko
+  type: ClusterIP
+
+cat tsutaya-service.yaml 
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: nginx
+  name: tsutaya-service
+  namespace: aishibuya
+spec:
+  ports:
+  - name: access-tsutaya
+    port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    shibuya-location: tsutaya
+  type: ClusterIP
+
+k get svc -n aishibuya 
+NAME              TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)   AGE
+hachiko-service   ClusterIP   10.101.194.141   <none>        80/TCP    13m
+tsutaya-service   ClusterIP   10.111.135.216   <none>        80/TCP    13m
+
+
+# getting th epods to see if matching service backend (just after this step)
+k get pods -o wide -n aishibuya 
+NAME            READY   STATUS    RESTARTS   AGE   IP              NODE                    NOMINATED NODE   READINESS GATES
+nginx-hachiko   1/1     Running   0          71m   172.16.210.82   node2.creditizens.net   <none>           <none>
+nginx-tsutaya   1/1     Running   0          70m   172.16.206.71   node1.creditizens.net   <none>           <none>
+
+# can't reach the pod that has an ingress policy because the label of the pod not matching even if the namespace label matches (we used ANDed rule)
+kubectl get endpoints hachiko-service -n aishibuya
+NAME              ENDPOINTS          AGE
+hachiko-service   172.16.210.82:80   10s  # correctly pointing to only one pod behind the service and it is the right one (right ip, see above get pods)
+k exec -it nginx2-tokyo -- bash
+root@nginx2-tokyo:/# curl tsutaya-service.aishibuya.svc.cluster.local
+<html>
+<h1 style="color:orange;">Starbuck Will Be Closed Till November 2025</h1>
+</br>
+<h1 style="color:red;">But Tsutaya Upper Stairs Will Still Be Open.</h1>
+</html>
+root@nginx2-tokyo:/# curl hachiko-service.aishibuya.svc.cluster.local
+^C
+root@nginx2-tokyo:/# curl hachiko-service.aishibuya.svc.cluster.local
+^C
+
+
+
+# can access to the right pod as it is matching policy labels for namespace and pod origin
+k get pods
+NAME           READY   STATUS    RESTARTS   AGE
+busy-tokyo     1/1     Running   0          114m
+nginx-tokyo    1/1     Running   0          71m
+nginx2-tokyo   1/1     Running   0          21m
+k exec -it nginx-tokyo -- bash
+root@nginx-tokyo:/# curl tsutaya-service.aishibuya.svc.cluster.local
+<html>
+<h1 style="color:orange;">Starbuck Will Be Closed Till November 2025</h1>
+</br>
+<h1 style="color:red;">But Tsutaya Upper Stairs Will Still Be Open.</h1>
+</html>
+root@nginx-tokyo:/# curl hachiko-service.aishibuya.svc.cluster.local
+<html>
+<h1 style="color:green;">Hachiko Statute Will Be Renovated</h1>
+</br>
+<h1 style="color:green;">The Refreshed Hachiko Will Be Available From December 2025.</h1>
+</html>
+root@nginx-tokyo:/# 
+
+# can still nslookup but this stops at the service and gets the ips of backend and ports
+k exec -it busy-tokyo -- sh
+/ # nslookup _access-tsutaya._tcp.tsutaya-service.aishibuya.svc.cluster.local
+Server:		10.96.0.10
+Address:	10.96.0.10:53
+
+
+Name:	_access-tsutaya._tcp.tsutaya-service.aishibuya.svc.cluster.local
+Address: 10.103.229.167
+
+/ # nslookup _access-hachiko._tcp.hachiko-service.aishibuya.svc.cluster.local
+Server:		10.96.0.10
+Address:	10.96.0.10:53
+
+Name:	_access-hachiko._tcp.hachiko-service.aishibuya.svc.cluster.local
+Address: 10.101.83.147
+
+
 _____________________________________________________________________
 # Next
 - [ ] update the cluster versions until we reach 1.32 (we are at 1.27)

@@ -1,18 +1,18 @@
-# pod_resolv_conf_services_having_netpolicy.yaml Pod
+# pod_resolv_conf_services_having_netpolicy_busybbox.yaml Pod
 apiVersion: v1
 kind: Pod
 metadata:
   namespace: default
-  #name: busy-tokyo
-  name: nginx2-tokyo
+  name: busy-tokyo
+  #name: nginx2-tokyo
 spec:
   containers:
-    - name: nginx2-tokyo-connect-to-aishibuya
-      image: nginx
-    #- name: busy-tokyo-connect-to-aishibuya
-      #image: busybox:1.35
+    #- name: nginx2-tokyo-connect-to-aishibuya
+    #  image: nginx
+    - name: busy-tokyo-connect-to-aishibuya
+      image: busybox:1.35
       # this necessary as busybox exits and pod will never stay alive so we need to sleep it for a while so we can do our work
-      #command: ["sleep", "36000"]
+      command: ["sleep", "36000"]
   # can be `Default`, `Clusterfirst`, `ClusterFirstWithHostNet` or `None`
   # when `None` we can custom config  `resolv.comf` of the pod
   dnsPolicy: "None"

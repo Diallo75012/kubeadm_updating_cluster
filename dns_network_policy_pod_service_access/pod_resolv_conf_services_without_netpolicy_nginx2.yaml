@@ -1,0 +1,30 @@
+# pod_resolv_conf_services_having_netpolicy_nginx2.yaml Pod
+apiVersion: v1
+kind: Pod
+metadata:
+  namespace: default
+  #name: busy-tokyo
+  name: nginx2-tokyo
+spec:
+  containers:
+    - name: nginx2-tokyo-connect-to-aishibuya
+      image: nginx
+    #- name: busy-tokyo-connect-to-aishibuya
+      #image: busybox:1.35
+      # this necessary as busybox exits and pod will never stay alive so we need to sleep it for a while so we can do our work
+      #command: ["sleep", "36000"]
+  # can be `Default`, `Clusterfirst`, `ClusterFirstWithHostNet` or `None`
+  # when `None` we can custom config  `resolv.comf` of the pod
+  dnsPolicy: "None"
+  dnsConfig:
+    # obtained ip by running: `kubectl get svc -n kube-system kube-dns`
+    nameservers:
+      - 10.96.0.10
+    # here we put what services we want to reach using Kubernetes DNS way
+    searches:
+      # <name_space.cluster.local>
+      # OR also can add: <service_name.namespace.svc.cluster.local>
+      - aishibuya.svc.cluster.local
+    options:
+      - name: ndots
+        value: "5"
