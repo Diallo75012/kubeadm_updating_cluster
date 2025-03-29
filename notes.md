@@ -2093,7 +2093,7 @@ spec:
   dnsConfig:
     # get the `nameserver ip of the cluster by running this command:
     # kubectl get svc -n kube-system kube-dns
-    nameservers:
+    :nameservers:
       - 10.96.0.10
     # here we put what services we want to reach using Kubernetes DNS way
     searches:
@@ -2232,8 +2232,9 @@ eg: ANDed vs ORed
 
 
 1) scenario that shows how dns works, very simple, within same namespace creating pod and exposing with a service and creating a third pod that would use dns to access the pod using DNS (curl/wget/nslookup whatever works)
-then do same scenario but this time the third pod is created outside of the namespace and curl/wget/nslookup again to show that DNs means that pods from other namespaces can resolve to the pod using DNS call
-2) do another scenario showing now ow to setup a pods and determining the reolv.conf of the pod content so that pod can call that other pod through another service dedicated to that other pod. maybe customize nginx in that namespace with different one and different messages index.html pages and having each different services attached to those. and go inside pod to show that it can resolve that pod
+then do same scenario but this time the third pod is created outside of the namespace and curl/wget/nslookup again to show that DNS means that pods from other namespaces can resolve to the pod using DNS call
+
+2) do another scenario showing now how to setup a pods and determining the reolv.conf of the pod content so that pod can call that other pod through another service dedicated to that other pod. maybe customize nginx in that namespace with different one and different messages index.html pages and having each different services attached to those. and go inside pod to show that it can resolve that pod
 eg: source: (form doc kubernetes)[https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/]
 apiVersion: v1
 kind: Pod
@@ -2256,7 +2257,7 @@ spec:
         value: "2"
       - name: edns0
 
-3) now make it more complexe by making htis example more interesting by adding a network policy as before even if not in resolv conf the pod could use the kubernetes native dns call to reach the other pod anyway, but this policy would say no ingress accepted from other namespaces for that pod specifically but the other pod would be still reachable
+3) now make it more complexe by making this example more interesting by adding a network policy as before even if not in resolv conf the pod could use the kubernetes native dns call to reach the other pod anyway, but this policy would say no ingress accepted from other namespaces for that pod specifically but the other pod would be still reachable
 source services can be created with name on ports which would be included in the DNS to target that port so the service behind it, can be nice to use to target the different nginx behind it with different html pages: (doc)[https://kubernetes.io/docs/concepts/services-networking/service/]
 o here say that network plugins are required and that we are using `Calico` already installed in the cluster and it is a prerequisite
   - example from doc:
