@@ -1,0 +1,57 @@
+# get this boilerplate file that you need to update manually using: `kubeadm config print init-defaults > kubeadm-config.yaml`
+apiVersion: kubeadm.k8s.io/v1beta3
+bootstrapTokens:
+- groups:
+  - system:bootstrappers:kubeadm:default-node-token
+  token: abcdef.0123456789abcdef
+  ttl: 24h0m0s
+  usages:
+  - signing
+  - authentication
+kind: InitConfiguration
+localAPIEndpoint:
+  # need to update this to `advertiseAddress:` to the control plane api address running `k get nodes -o wide` or `hostname -I | awk '{print $1}'`
+  #advertiseAddress: 1.2.3.4
+  advertiseAddress: 192.168.186.146
+  bindPort: 6443
+nodeRegistration:
+  criSocket: unix:///var/run/containerd/containerd.sock
+  imagePullPolicy: IfNotPresent
+  # make sure the hsotname matched the controller node one `run: `hostname`` and get the result of that field here
+  name: controller.creditizens.net
+  taints: null
+  # this activate the sidecar feature
+  kubeletExtraArgs:
+    feature-gates: "SidecarContainers=true"
+---
+apiServer:
+  timeoutForControlPlane: 4m0s
+  # this to add the feature `SidecarContainers` to the API server
+  extraArgs:
+    feature-gates: "SidecarContainers=true"
+apiVersion: kubeadm.k8s.io/v1beta3
+certificatesDir: /etc/kubernetes/pki
+clusterName: kubernetes
+### updated controller manager from default `controllerManager: {}` to add the feature `SidecarContainers`
+#controllerManager: {}
+controllerManager:
+  extraArgs:
+    feature-gates: "SidecarContainers=true"
+dns: {}
+etcd:
+  local:
+    dataDir: /var/lib/etcd
+imageRepository: registry.k8s.io
+kind: ClusterConfiguration
+kubernetesVersion: 1.28.0
+networking:
+  dnsDomain: cluster.local
+  serviceSubnet: 10.96.0.0/12
+### updated scheduler fromd efault `scheduler: {}` to add the feature `SidecarContainers`
+#scheduler: {}
+scheduler:
+  extraArgs:
+    feature-gates: "SidecarContainers=true"
+
+# then run : sudo kubeadm upgrade apply <your_kubeadm_actual_version> --config=<name_of_this_pathcer_yaml_file>
+

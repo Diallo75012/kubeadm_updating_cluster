@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: manga-kissa-abunai
+  labels:
+    app: manga-kissa-abunai
+spec:
+
+  containers:
+    - name: proxy-mangakissa
+      image: nginx
+      volumeMounts:
+        - name: mangakissa-shared-volume
+          mountPath: /usr/share/nginx/html/
+
+  initContainers:
+    - name: log-mangakissa-events
+      image: busybox:1.35
+      command: ['sh', '-c']
+      args:
+        - |
+          mkdir -p /mangakissa/events/
+          echo "*****Running From Init Container: Log-MangaKissa-Events****** \n <h1 style=\"color:red;\">Manga Kissa Abunai!</h1>" > /mangakissa/events/index.html
+          sleep 3600
+      volumeMounts:
+        - name: mangakissa-shared-volume
+          mountPath: /mangakissa/events/
+      restartPolicy: Always
+
+  volumes:
+    - name:  mangakissa-shared-volume
+      emptyDir: {}

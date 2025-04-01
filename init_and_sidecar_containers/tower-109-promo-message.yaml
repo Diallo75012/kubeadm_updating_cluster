@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    app: tower-109-promo-message
+  name: tower-109-promo-message
+  namespace: department-stores
+spec:
+  # main container app
+  containers:
+    - name: nginx
+      image: nginx
+      volumeMounts:
+        - name: html-109-message
+          mountPath: /usr/share/nginx/html/
+
+  # init container
+  initContainers:
+    - name: init-109-html
+      image: busybox:1.35
+      command: ['sh', '-c', 'echo "<h1 style="color:#800f71">Shibuya 109 is running a Spring Sakura Promo: ALL -30%!!!!</h1>" > /depratment-stores/109/message/html/index.html']
+      volumeMounts:
+        - name: html-109-message
+          mountPath: /depratment-stores/109/message/html/
+
+  # now we need the shared volumes between both
+  volumes:
+    - name: html-109-message
+      emptyDir: {}
