@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: tokyo-tower-sidecar-info
+spec:
+  # so here we have two containers running and defined, one being a sidecar container
+  containers:
+    - name: info-of-the-day
+      image: busybox
+      command: ["sh", "-c", "echo '###### Tokyo Tower Will Be Opened On The 1st April and This is Not a Joke! ########' > /tokyo-towaaa/info/index.html && tail -f /dev/null"]
+      volumeMounts:
+        - name: info-message
+          mountPath: /tokyo-towaaa/info/
+
+    - name: nginx
+      image: nginx
+      volumeMounts:
+        - name: info-message
+          mountPath: /usr/share/nginx/html
+
+  volumes:
+    - name: info-message
+      emptyDir: {}
+

@@ -1,3 +1,4 @@
+# run this command to get this `yaml`: `kubectl get configmap kubeadm-config -n kube-system -o yaml > real_cluster_config_just_for_info.yaml`
 apiVersion: v1
 data:
   ClusterConfiguration: |

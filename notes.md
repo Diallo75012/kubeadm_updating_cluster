@@ -2733,7 +2733,9 @@ spec:
         - name: html-109-message
           mountPath: /usr/share/nginx/html
 ```
-cat tower-109-promo-message.yaml 
+
+- another example: cat tower-109-promo-message.yaml 
+```yaml
 apiVersion: v1
 kind: Pod
 metadata:
@@ -2769,12 +2771,14 @@ spec:
     - name: html-109-message
       emptyDir: {}
 ```
+
 ```bash
 # make it available for the browser using exposition type `port-fowrward
 kubectl apply -f nginx-with-init.yaml
 kubectl port-forward pod/nginx-with-init 8080:80
 curl http://localhost:8080
 ```
+
 ### Order Of Execution
 The order of `Init Containers`, `Sidecar Containers`, even `pods` is determined by the `resource/limits`
 The more resources is asked the first it would be ran.
@@ -2786,8 +2790,8 @@ Otherwise, for each group it would be done sequentially, in the order of how tho
 When termination pod, first the main application container would stop, then the `sidecars` so it following the inverse order of the execution when starting the pod.
 
 ## Scenario 2: Nginx logs are being capture by a sidecar container (2 ways)
-- way 1: `sidecar container` is an `init container` with `restartPolicy` equl to `always`
-- way 2: `sidecar container` is a normalpod capturing nginx logs
+- way 1: `sidecar container` is an `init container` with `restartPolicy` equal to `always`
+- way 2: `sidecar container` is a normal pod capturing nginx logs
 - Both ways use the technique of setting `emptyDir: {}` for shared volumes between the two (like I do in my `Python` apps when i create a dynamic `.env` file to share data between processes)
 
 ### Way 1:
@@ -2818,12 +2822,14 @@ spec:
       emptyDir: {}
 ```
 
+
 **VERY IMPORTANT**
 - **Feature SidecarContainers need to be activated on the cluster as of the v1.28.15 of kubeadm it is not activated, after from next version it will be** 
   - **first get the `kubeadm` config file boilerplate and update it for all component activating the feature `SidecarContainers` also adding the controller ip address and the controller hostname as it is ran on the controller node**:
 ```bash
 cat kubeadm_config_to_patch_sidecar_feature_enablement_boilerplate.yaml
 ```
+
 ```yaml
 # get this boilerplate file that you need to update manually using: `kubeadm config print init-defaults > kubeadm-config.yaml`
 apiVersion: kubeadm.k8s.io/v1beta3
@@ -2961,7 +2967,7 @@ metadata:
   namespace: kube-system
   resourceVersion: "413627"
   uid: 744a0490-3f7a-4d87-bedd-4b225edd0758
-```C
+```
 
 ### Way 2:
 ```yaml
@@ -2970,15 +2976,15 @@ kind: Pod
 metadata:
   name: nginx-normal-sidecar
 spec:
-  initContainers:
+  # so here we have two containers running and defined, one being a sidecar container
+  containers:
     - name: log-agent
       image: busybox
-      command: ["sh", "-c", "echo '###### running from sidecar Init Container Way ########' > /share/index.html && tail -f /shared/index.html"]
+      command: ["sh", "-c", "echo '###### running from sidecar Container Normal Way ########' > /share/index.html && tail -f /shared/index.html"]
       volumeMounts:
         - name: shared-content
           mountPath: /shared
 
-  containers:
     - name: nginx
       image: nginx
       volumeMounts:
@@ -2987,6 +2993,37 @@ spec:
 
   volumes:
     - name: shared-content
+      emptyDir: {}
+```
+
+- another example that works fine and contextualized:
+```bash
+cat sidecar_container_as_sidecar_container_the_normal_one.yaml 
+```
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: tokyo-tower-sidecar-info
+spec:
+  # so here we have two containers running and defined, one being a sidecar container
+  containers:
+    - name: info-of-the-day
+      image: busybox
+      command: ["sh", "-c", "echo '###### Tokyo Tower Will Be Opened On The 1st April and This is Not a Joke! ########' > /tokyo-towaaa/info/index.html && tail -f /dev/
+null"]
+      volumeMounts:
+        - name: info-message
+          mountPath: /tokyo-towaaa/info/
+
+    - name: nginx
+      image: nginx
+      volumeMounts:
+        - name: info-message
+          mountPath: /usr/share/nginx/html
+
+  volumes:
+    - name: info-message
       emptyDir: {}
 ```
 
@@ -3026,6 +3063,13 @@ sudo systemctl restart kubelet
 
 __________________________________________________________________
 # Next
+- [ ] do those kubernetes concepts:
+    - [ ] Storage, Backup and Recovery
+    - [ ] Resources Limits
+    - [ ] Cronjob, Jobs
+    - [ ] Damonsets
+    - [ ] Kubernetes Kustomize
+    - [ ] Helm
 - [ ] update the cluster versions until we reach 1.32 (we are at 1.27)
     so we will have to do same process several times and fix any compatibility issues along the way.
     need to check supported versions ranges for each kubeadm updated version

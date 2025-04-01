@@ -25,6 +25,7 @@ spec:
       volumeMounts:
         - name: mangakissa-shared-volume
           mountPath: /mangakissa/events/
+      # very important option that makes it stay alive with pod lifetime
       restartPolicy: Always
 
   volumes:
