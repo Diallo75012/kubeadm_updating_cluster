@@ -1,4 +1,4 @@
-# Create Certificates For The Cluster
+ Create Certificates For The Cluster
 Go to source Kubernetes Documentation Which Has All Details: [Cert Creation Doc](https://kubernetes.io/docs/tasks/administer-cluster/certificates/)
 
 ## Kubeadm when initialized creates certificates automatically
@@ -3060,6 +3060,374 @@ featureGates:
 # then restart kubelet
 sudo systemctl restart kubelet
 ```
+
+## REMINDER ON PODS RESTART POLICIES VALUE EFFECTS (ChatGPT)
+1. Always (default for Pods)
+- Container restarts automatically on failure or exit.
+- Used for long-running containers, like web servers.
+- Required for Deployments, ReplicaSets, etc.
+
+2. OnFailure
+- Restart only if container exits with non-zero code (error).
+- Does not restart if the container exits cleanly (exit 0).
+- Used in Jobs (batch processing).
+
+3. Never
+- Never restarts, no matter how the container exits.
+- Used when you want one-shot containers (manual runs, debugging).
+
+_________________________________________________________________
+
+# STORAGE
+
+## Persistant Volumes (PVs)
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv0003
+spec:
+  capacity:
+    storage: 5Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Recycle
+  storageClassName: slow
+  mountOptions:
+    - hard
+    - nfsvers=4.1
+  nfs:
+    path: /tmp
+    server: 172.17.0.2
+```
+
+
+Like when a pod is created it request cpu and memory from the node,
+here the `PVs` are the resources configured by th ecluster admin and `PVCs` (persistant volume claims) are like the pods requestiong for resources to be mounted.
+Different access depending on what it is wanted to be done, but not only,
+also depends on the resource that is used for storage,
+like some accept multiple entries while others have some different specifics:
+**Important those are NOT GUARANTEED as no constraint is put by Kubernetes on those volumes**
+- ReadWriteOnce (RWO): `single node` mount, can be `red and written` by all pods living on that node.
+- ReadOnlyMany (ROX): this volume can be mounted as `read only` by `many modes`
+- ReadWriteMany (RWX): this volume can be mounted as `read and write` by `many modes`
+- ReadWriteOncePod (RWOP): this volume ensures that accros the whole cluster `only one pod` can `read and write` on the volume
+source: (Check doc to see table of volumes and what access mode they support or not)[https://kubernetes.io/docs/concepts/storage/persistent-volumes/#access-modes]
+
+eg: `hostPath` is supporting only `ReadWriteOnce`
+and this is what we are probably going to use as we are running `kubeadm` locally
+and not in the cloud (no `ebs` volumes for eg.) 
+
+### Storage Class of PVs
+`PVs` with annotation (might become deprecated) `volume.beta.kubernetes.io/storage-class`
+or `storageClassName` (more actual way of doing it) would only be mounted by claims matching those
+otherwise `PVs` without it would be bound to `PVCs` that do not specify storage class.
+
+### Reclaim Policy
+- Retain -- manual reclamation
+- Recycle -- basic scrub (rm -rf /thevolume/*) and this only for `nfs` and `hostPath` types of volumes
+- Delete -- delete the volume
+
+### Affinity
+Can be set only when using `local`(which can only be a static PV and not Dynamic one) `PVs`.
+
+### Example `YAML` file showing those previous concepts with field defined
+source: (PVs type: local)[https://kubernetes.io/docs/concepts/storage/volumes/#local]
+source: (STorageClass Creation)[https://kubernetes.io/docs/concepts/storage/storage-classes/#local]
+
+so when using `local` types of volumes we **MUST** set node affinity!
+here we do use example from documentation using `local` volumes to set `volumeBindingMode` set to `WaitForFirstConsumer` in the first `yaml` part.
+Other that we could use are `hostPath` and `emptyDir`. Those could also be used for SSD/USB/FIlePath and depends on underlying system access to those.
+
+```yaml
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-storage
+provisioner: kubernetes.io/no-provisioner # indicates that this StorageClass does not support automatic provisioning
+volumeBindingMode: WaitForFirstConsumer
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: example-pv
+# probably goes here
+spec:
+# here we set the capacity of this volume made available in the cluster to pods (in nodes following the defined affinity here)
+  capacity:
+    storage: 100Gi
+# `FileStystem` if using file system otherwise use `Block` as well for hard drives probably
+  volumeMode: Filesystem
+# the access mode RWO
+  accessModes:
+  - ReadWriteOnce
+# the reclaim policy type set to `Delete`
+  persistentVolumeReclaimPolicy: Delete
+# the `storageClassName` defined in the above `yaml`
+  storageClassName: local-storage
+# using here `local` which makes us then obliged to use node affinity
+  local:
+    path: /mnt/disks/ssd1
+# here creating the node affinity constraint
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - example-node
+```
+
+### Little Schema To understand
+-> StorageClass
+  -> PV uses that storage class and defines volume size, access mode, reclaim policy, node affinity (if local type of volume)
+    -> pods request the PV with the right storage class
+
+**Note:** Delaying volume binding ensures that the PersistentVolumeClaim binding decision will also be evaluated with any other node constraints the Pod may have,
+such as node resource requirements, node selectors, Pod affinity, and Pod anti-affinity.
+
+### IN THE CLOUD
+In the cloud it is different than locally running a Kubernetes cluster as for the `CSI` (Container Storage Interface) different drivers would be used
+so need to check on the documentation and also what is possible to do and not.
+It works like that:
+- `CSI` driver is deployed in the Kubernetes cluster
+- then from that moment the Cloud volumes would be available to be mounted and used. After depends on which ones are available
+- different Cloud Providers have different settings in how many volumes MAX could be attached to a single node.
+- Need also to check on that. eg: x36 `EBS` volumes for `AWS` on each node and there is an env var that can be modified to have control on that...check docs!.
+
+### PVs Phases
+those are the different states that PVs can have:
+- `Available`: a free resource that is not yet bound to a claim
+- `Bound`: the volume is bound to a claim
+- `Released`: the claim has been deleted, but the associated storage resource is not yet reclaimed by the cluster
+- `Failed`: the volume has failed its (automated) reclamation
+
+
+
+## Persistant Volume Cliam PVCs
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: myclaim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  volumeMode: Filesystem
+  resources:
+    requests:
+      storage: 8Gi
+  storageClassName: slow
+  selector:
+    matchLabels:
+      release: "stable"
+    matchExpressions:
+      - {key: environment, operator: In, values: [dev]}
+```
+
+### Access modes and Volumes Types
+Same as `PVs` ones
+
+### Resources
+Here is the difference as this is a `claim` the pod would request for a certain amount of resources (like a pod would do to request cpu and memory).
+
+### Selectors
+To match a set of specific volumes, volumes can be labelled and the `PVC` would use a selector like we do with pods.
+It is ANDed:
+- matchLabels - the volume must have a label with this value
+- matchExpressions with operators: In, NotIn, Exists, and DoesNotExist
+
+### Class 'storageClass'
+a `PVC` can actually specify a storage class by name using: `storageClassName`
+if `storageClassName: ""`:
+- it will be set for `PV` taht do not have any storage class name
+  - if `DefaultStorageClass` have been enabled in the kubernetes cluster.
+    done by adding annotation: `storageclass.kubernetes.io/is-default-class:true` (will be deprecated, better to use `storageClassName`):
+    - the `storageClassName: ""` request would be bounded to the default `storageClass` set by the kubernetes admin
+  - if `DefaultStorageClass` is not enabled: the `PVC` would be bound to the latest `PV` created. Order is from the newest to the oldest if many.
+    and those `PVs` need to also have `storageClassName: ""`.
+
+Some other rules:
+- can create `PVC` without `storageClassName` only when the `DefaultStorageClass` is not enabled.
+- if no `StorageClassName` defined when creating a `PVC` and then you enable `DefaultStorageClass`, kubernetes would set `StorageClassName: ""` to those `PVCs`
+- if `StorageClassName: ""` defined in `PVC` and then you enable `DefaultStorageClass`, kubernetes won't update those `PVCs` as those are fine with the right `:""`
+
+## Namespaced or not?
+- `PVs` are NOT namespaced
+- `StorageClasses` are NOT namespaces
+- `PVCs` are YES namespaces
+```bash
+# k api-resources | grep "storageclasses"
+storageclasses                    sc           storage.k8s.io/v1                      false        StorageClass
+
+# k api-resources | grep "pv"
+persistentvolumeclaims            pvc          v1                                     true         PersistentVolumeClaim
+persistentvolumes                 pv           v1                                     false        PersistentVolume
+```
+
+## Claim as Volume
+source: (claims as volume)[https://kubernetes.io/docs/concepts/storage/persistent-volumes/#claims-as-volumes]
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mypod
+spec:
+  containers:
+    - name: myfrontend
+      image: nginx
+      volumeMounts:
+      - mountPath: "/var/www/html"
+        name: mypd
+  volumes:
+    - name: mypd
+      persistentVolumeClaim:
+        claimName: myclaim
+```
+
+## Raw Block as Volume
+**Note:** Here instead of using `mountPath` on the pod `volume` we use `devicePath`
+- `PV`
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: block-pv
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  volumeMode: Block
+  persistentVolumeReclaimPolicy: Retain
+  fc:
+    targetWWNs: ["50060e801049cfd1"]
+    lun: 0
+    readOnly: false
+
+```
+- `PVC`
+```yaml apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: block-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  volumeMode: Block
+  resources:
+    requests:
+      storage: 10Gi
+```
+- `Pod`
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-with-block-volume
+spec:
+  containers:
+    - name: fc-container
+      image: fedora:26
+      command: ["/bin/sh", "-c"]
+      args: [ "tail -f /dev/null" ]
+      volumeDevices:
+        - name: data
+# here we use `devicePath` instead of `mountPath`
+          devicePath: /dev/xvda
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: block-pvc
+```
+
+## Enabling `--feature-gates` to make Cross-Namespace Volumes Possible [`Alpha`]
+source: (cross namespace volumes)[https://kubernetes.io/docs/concepts/storage/persistent-volumes/#cross-namespace-data-sources]
+Kubernetes supports cross namespace volume data sources.
+To use cross namespace volume data sources, 
+you must enable the AnyVolumeDataSource and CrossNamespaceVolumeDataSource feature gates for the kube-apiserver and kube-controller-manager. 
+Also, you must enable the CrossNamespaceVolumeDataSource feature gate for the csi-provisioner.
+
+Enabling the CrossNamespaceVolumeDataSource feature gate allows you to specify a namespace in the dataSourceRef field.
+
+
+## Strictly binding a PVC with a PV
+**Good if `PV` stet `persistentVolumeReclaimPolicy: Retain`** 
+source: (doc)[https://kubernetes.io/docs/concepts/storage/persistent-volumes/#persistentvolumeclaims]
+
+- this will not strictly bind it:
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: foo-pvc
+  namespace: foo
+spec:
+  storageClassName: "" # Empty string must be explicitly set otherwise default StorageClass will be set
+  volumeName: foo-pv
+  ...
+```
+- this would strictly bind it by reserving that `PV` to that `PVC` using `claimRef`:
+Thereofre, here it has to be set also on the `PV` side the `claimRef` referencing the corresponding `PVC`
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: foo-pv
+spec:
+  storageClassName: ""
+# so here we use `clainRef` to bind the `PV` to a claim
+  claimRef:
+    name: foo-pvc
+    namespace: foo
+  ...
+```
+- Recap comnditions for this to work:
+`PVC` -> referencing the `PV` using `volumeName`
+`PV` -> referencing `PVC` using `claimRef`
+
+## RECAP (ChatGPT)
+### Dynamic Provisioning.
+Here kubernetes creates the `PV` **automatically**
+
+**Define:**
+- a StorageClass
+- a PVC (that refers to that StorageClass)
+- and a Pod that uses the PVC
+- Then Kubernetes automatically creates the PersistentVolume (PV)
+- no need to pre-create a PV.
+
+
+**Why create PVs manually (Static Provisioning)?**
+Only create a PV manually when:
+- Static Provisioning: have pre-existing storage (e.g., a mounted NFS share, disk partition, etc.) and want to bind it manually.
+- Want to control which pod gets which exact volume (e.g., binding a specific disk to a specific application).
+- For air-gapped clusters or restricted environments where can't use dynamic storage backends.
+- For on-premise storage where the admin provisions and maintains volumes manually.
+
+
+**So two options:**
+|Option	|What You Define	|Who Creates the PV	|Use Case |
++-------+-----------------------+-----------------------+---------+
+|Dynamic Provisioning	|StorageClass + PVC	|Kubernetes (automatically)	|Most common, easy, scalable|
++-----------------------+-----------------------+-------------------------------+---------------------------+
+|Static Provisioning	|PV + PVC	|You (admin)	|Pre-provisioned disks, special use cases|
++-----------------------+---------------+---------------+----------------------------------------+
+
+**Can a Pod bind to a specific PV?**
+Indirectly, yes — by:
+- Creating a PVC with:
+  - the same:
+    - storage size
+    - accessModes
+  - and optionally matching the volumeName or selector labels used by the PV
+
+Then the PVC will bind to that specific PV.
+
 
 __________________________________________________________________
 # Next
