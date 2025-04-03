@@ -3428,6 +3428,256 @@ Indirectly, yes — by:
 
 Then the PVC will bind to that specific PV.
 
+# When using `WaitForFirstConsumer` in `StorageClass`, you need to:
+**Important:**
+Let's say we are in the example of some `scheduling` rules for pods that need to be in certain zones or nodes in the world.
+Now the default behavior is `immediate` binding of the `PVC` to available volumes `PVs`. But this would by-pass the `scheduling` requirements.
+Therefore, an issue as you won't get your workload following the rule set for the `scheduler` in the `pod`. 
+This is when we use `WaitForFirstConsumer` for the `scheduler` to be taken into consideration by delaying the volume binding.
+Now it is given the time to understand the zones and nodes, the resouces limits (taint/toleration, affinity and more ...) in each for each pods and the full environemnt for a good scheduling of the volumes.
+So here to resume we are not by-passing topology rules and scheduler contraints.
+
+- `StorageClass`: use of `WaitForFirstConsumer` with `allowedTopologies`
+```yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: standard
+provisioner:  example.com/example
+parameters:
+  type: pd-standard
+volumeBindingMode: WaitForFirstConsumer
+allowedTopologies:
+- matchLabelExpressions:
+  - key: topology.kubernetes.io/zone
+    values:
+    - us-central-1a
+    - us-central-1b
+```
+
+- Pod: not using `nodeName` but `hostName` in selector when not using affinity
+Here we can see the way to use `nodeSelector` as well
+```yaml
+spec:
+  nodeSelector:
+    kubernetes.io/hostname: kube-01
+```
+
+# some extra to know
+- `StorageClass`(storageclass.yaml) is not indicating the `capacity`, but the `PVC`(pvc.yaml) would indicate `capacity` (`resources` -> `request` -> `storage`)
+  and then the pod would reference that `PVC`.
+  This is how the `Pod` would get request resources satisfied and volume mounted ('persistentVolumeClaim' -> `claimName`). 
+  `PV` would be created automatically (`Dynamic`) by kubernetes.
+- You need to install `CSI` drivers if you want to extend storage to external ones (like they do in the cloud,
+  see next the example with local `S3` like volume using `Minio` which can listen to a directory path...)
+
+
+
+# example `S3` like volume using `Minio`
+What is interesting with `Minio` is that it can listen to a folder path if it is used for it's bucket path
+So here the solution would  be to install a `CSI` criver for the `s3` like volume.
+and then have a local `Minio` OR `external` to the cluster listening on a node folder path or internal to the cluster sharing volume with the host node and being
+used as `sidecar` container.
+- **Deploy the `CSI` driver**: follow installation (instructions)[https://github.com/ctrox/csi-s3] of this `csi-s3` available on `github`
+- **Create StorageClass**: this `StorageClass` would be using it:
+```yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: s3-storage
+provisioner: s3.csi.k8s.io
+parameters:
+  bucket: my-bucket
+  region: us-east-1
+  mounter: rclone
+  options: --s3-endpoint=https://s3.amazonaws.com
+```
+- **Create `PVC`**: this `PVC` would reference the `StorageClass`
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: s3-pvc
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: s3-storage
+```
+- And after just mount the volume to your `Pod`.
+- But actually this is where it is interesting as you don't even need to do that if is an `object store` like `S3` or `Minio`.
+  All you need here is to use the trick of shared volumes and use local `Minio` path or `S3 SDK` or `sidecar` using `mc` (Minio Client)
+Minimal eg:. might need another `sidecar` for `sync data` with `Minio` server.
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app-with-minio-sidecar
+spec:
+  containers:
+    - name: my-app
+      image: my-app-image
+      volumeMounts:
+        - name: shared-data
+          mountPath: /app/data
+    - name: minio-sidecar
+      image: minio/mc
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          mc alias set myminio http://minio.default.svc.cluster.local:9000 minio minio123
+          mc cp --recursive myminio/my-bucket /shared-data
+          tail -f /dev/null
+      volumeMounts:
+        - name: shared-data
+          mountPath: /shared-data
+  volumes:
+    - name: shared-data
+      emptyDir: {}
+```
+
+- summary by `ChatGpt`:
+Can I use it locally in kubeadm with MinIO? Yes! You can:
+- Deploy MinIO as a pod.
+- Use an S3 CSI driver that works with any S3-compatible storage (like MinIO).
+- Or use a sidecar container that downloads/upload files to MinIO.
+
+
+
+# Full example using locally `allowedTopologies` 
+
+## Static Way:
+
+- label nodes
+```bash
+kubectl label node node1 topology.kubernetes.io/zone=us-central-1a
+kubectl label node node2 topology.kubernetes.io/zone=us-central-1b
+```
+- create `StorageClass`:
+```yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: standard-local
+provisioner: kubernetes.io/no-provisioner  # no dynamic provisioning
+volumeBindingMode: WaitForFirstConsumer    # bind PV only when pod is scheduled
+allowedTopologies:
+  - matchLabelExpressions:
+      - key: topology.kubernetes.io/zone
+        values:
+          - us-central-1a
+          - us-central-1b
+```
+- create a `PV` (manually not automatic which gives more control to admin, called `static` way):
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: local-pv-1
+spec:
+  capacity:
+    storage: 2Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: standard-local
+  local:
+    path: /mnt/disks/ssd1  # you can `mkdir -p` this on the host manually
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: topology.kubernetes.io/zone
+              operator: In
+              values:
+                - us-central-1a
+```
+- create a `PVC`:
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: my-local-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+  storageClassName: standard-local
+```
+- create a `Pod`:
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: local-storage-pod
+spec:
+  containers:
+    - name: app
+      image: nginx
+      volumeMounts:
+        - mountPath: /usr/share/nginx/html
+          name: data
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: my-local-claim
+```
+
+## Dynamic Way
+
+- install `CSI` driver for local provisioner from github (`rancher`)[https://github.com/rancher/local-path-provisioner]
+It registers a StorageClass named local-path which can be used for dynamic provisioning
+```bash
+kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
+```
+- Change the `StorageClass` with the `CSI` driver deployed to the cluster
+```
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: dynamic-local
+provisioner: rancher.io/local-path  # Or any CSI driver available in your cluster
+volumeBindingMode: WaitForFirstConsumer
+```
+- get rid of the previously created `PV` and use the `PVC` and `Pod` (can change name if wanted to):
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: my-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: dynamic-local
+```
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-using-dynamic
+spec:
+  containers:
+    - name: app
+      image: nginx
+      volumeMounts:
+        - mountPath: /usr/share/nginx/html
+          name: web-storage
+  volumes:
+    - name: web-storage
+      persistentVolumeClaim:
+        claimName: my-claim
+```
+
+
+
 
 __________________________________________________________________
 # Next
