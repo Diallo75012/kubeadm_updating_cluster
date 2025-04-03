@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-needing-storage
+spec:
+  containers:
+    - name: i-need-storage-pod
+      image: nginx
+      volumeMounts:
+      # here using mountpath
+      - mountPath: "/tmp/local-pv"
+        name: my-local-storage
+  volumes:
+    - name: my-local-storage
+      persistentVolumeClaim:
+        claimName: pvc-scheduled-in-node-affinity-defined-by-pv-affinity
+
