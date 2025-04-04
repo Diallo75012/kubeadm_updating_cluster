@@ -1,0 +1,20 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-storage3-with-annotation-default
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+# indicates that this StorageClass does not support automatic provisioning
+#provisioner: kubernetes.io/no-provisioner
+# can be used when setting annotation `is-default-class` and use dynamic provisioning
+# or just don;t use it ans create a pv with same capacity as the pvc and `storageClassName: ""`
+# provisioner: kubernetes.io/host-path # but won;t work in local kubeadm so need to use SCI driver for Dynamic Provisioner (rancher of OepnEBS one)
+#volumeBindingMode: WaitForFirstConsumer
+
+# OpenEBS (storageclass)
+# kubectl apply -f https://openebs.github.io/charts/openebs-operator-lite.yaml
+
+# Rancher Local Path Provisioner (storageclass, deployment, configmap)
+# kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
+# kubectl patch storageclass local-path -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+

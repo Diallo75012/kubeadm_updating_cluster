@@ -13,7 +13,7 @@ spec:
   # `Delete/Retain also Recycle but be carefull as it uses `rm -rf` and is only for `nfs` and `hostPath``
   persistentVolumeReclaimPolicy: Delete
   # play with this field to show behavior of by-passing scheduler and also another of `DefaultStorageClass`
-  storageClassName: ""
+  #storageClassName: ""
   # storageClassName: local-storage
   # using here `local` which makes us then obliged to use node affinity
   local:

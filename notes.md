@@ -3695,7 +3695,7 @@ explain:
 explain:
 a `PVC` can actually specify a storage class by name using: `storageClassName`
 if `storageClassName: ""`:
-- it will be set for `PV` taht do not have any storage class name
+- it will be set for `PV` that do not have any storage class name
   - if `DefaultStorageClass` have been enabled in the kubernetes cluster.
     done by adding annotation: `storageclass.kubernetes.io/is-default-class:true` (will be deprecated, better to use `storageClassName`):
     - the `storageClassName: ""` request would be bounded to the default `storageClass` set by the kubernetes admin

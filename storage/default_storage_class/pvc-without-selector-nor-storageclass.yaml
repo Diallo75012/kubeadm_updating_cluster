@@ -9,6 +9,8 @@ spec:
   resources:
     requests:
       storage: 512Ki
+  # if no storageClassName defined kubernetes assumes `Dynamic` type of provisioning so need to change the provisioner on StorageClass
+  storageClassName: ""
   #storageClassName: local-storage
   #selector:
   #  matchLabels:
