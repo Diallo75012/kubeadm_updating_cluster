@@ -5,32 +5,19 @@ metadata:
 spec:
   capacity:
     storage: 512Ki
-  # use `Block` for SSDs for eg:.
   volumeMode: Filesystem
   accessModes:
-    # RWO: `single node` mount, can be `red and written` by all pods living on that node
     - ReadWriteOnce
-  # `Delete/Retain also Recycle but be carefull as it uses `rm -rf` and is only for `nfs` and `hostPath``
   persistentVolumeReclaimPolicy: Delete
-  # play with this field to show behavior of by-passing scheduler and also another of `DefaultStorageClass`
   #storageClassName: ""
   # storageClassName: local-storage
-  # using here `local` which makes us then obliged to use node affinity
   local:
-    # this path need to be created manually on node
     path: /tmp/local-pv
-  # here creating the node affinity constraint
   nodeAffinity:
-    # required OR preferred
     required:
       nodeSelectorTerms:
       - matchExpressions:
-        # kubernetes ones
-        #- key: kubernetes.io/hostname
         # custom
         - key: location
           operator: Exists
-        #  operator: In
-        #  values:
-        #  - shizuoka
 

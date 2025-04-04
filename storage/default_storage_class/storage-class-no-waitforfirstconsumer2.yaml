@@ -2,7 +2,6 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: local-storage2
-# indicates that this StorageClass does not support automatic provisioning
 provisioner: kubernetes.io/no-provisioner
 #volumeBindingMode: WaitForFirstConsumer
 

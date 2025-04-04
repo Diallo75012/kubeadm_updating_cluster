@@ -25,12 +25,7 @@ spec:
     required:
       nodeSelectorTerms:
       - matchExpressions:
-        # kubernetes ones
-        #- key: kubernetes.io/hostname
         # custom
         - key: location
           operator: Exists
-        #  operator: In
-        #  values:
-        #  - shizuoka
 
