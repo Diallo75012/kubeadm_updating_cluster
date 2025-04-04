@@ -3451,6 +3451,8 @@ metadata:
 provisioner:  example.com/example
 parameters:
   type: pd-standard
+# can be `Delete` to delete `PV` automatically created when `PVC` is deleted, or `Retain` which is the default one keeping the volume created intact 
+ReclaimPolicy: Delete
 volumeBindingMode: WaitForFirstConsumer
 allowedTopologies:
 - matchLabelExpressions:
@@ -3459,6 +3461,8 @@ allowedTopologies:
     - us-central-1a
     - us-central-1b
 ```
+**Notes About `RetainPolicy`**: there is another `RetainPolicy` also that can be set when setting `Static` provisioning meaning that you are the one who
+create the `PV`, the `PV` itself have a `PersistentVolumeReclaimPolicy` which takes precedence on the one set in the `StorageClass` so no need to set one in the `StorageClass` when creating a `Static` volume. Also it can be patched so changed. In the case of `Dynamic` so creation by `StorageClass` matching `PV` it will be taking the `StorageClass` defined `ReclaimPolicy`
 
 - Pod: not using `nodeName` but `hostName` in selector when not using affinity
 Here we can see the way to use `nodeSelector` as well

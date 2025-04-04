@@ -1,0 +1,14 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: japan-storage3
+provisioner: rancher.io/local-path
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Delete
+allowedTopologies:
+- matchLabelExpressions:
+  - key: city
+    values:
+    - Tokyo
+    - Viantiane
+    - Hanoi

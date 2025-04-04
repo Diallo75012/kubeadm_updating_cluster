@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: japan-pvc3
+spec:
+  accessModes:
+    - ReadWriteOnce
+  volumeMode: Filesystem
+  resources:
+    requests:
+      storage: 512Ki
+  # if no `storageClassName` is defined it will be dynamically using the `default` StorageClass`
+  # storageClassName: ""`
+  storageClassName: japan-storage3

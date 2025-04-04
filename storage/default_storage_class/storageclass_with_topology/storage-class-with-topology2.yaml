@@ -1,0 +1,15 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: japan-storage2
+provisioner: rancher.io/local-path
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Delete
+allowedTopologies:
+- matchLabelExpressions:
+  # must have this key but values are ORed as all in same `matchLabelExpressions`
+  - key: mangakissa-activity
+    values:
+    - watch-naruto-no-sound-shock-wave2
+    - massage-chair
+    - all-free-drinks

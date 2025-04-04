@@ -1,0 +1,13 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-storage
+provisioner: rancher.io/local-path
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Delete
+allowedTopologies:
+- matchLabelExpressions:
+  - key: house-server
+    values:
+    - sapporo-house
+    - naha-house

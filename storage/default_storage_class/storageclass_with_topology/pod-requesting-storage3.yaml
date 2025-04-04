@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-needing-storage3
+spec:
+  containers:
+    - name: i-need-storage-pod
+      image: nginx
+      volumeMounts:
+      - mountPath: "/tmp/local-pv"
+        name: my-local-storage3
+  volumes:
+    - name: my-local-storage3
+      persistentVolumeClaim:
+        claimName: japan-pvc3
+
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: kubernetes.io/hostname
+            operator: In
+            values:
+            - controller.creditizens.net
