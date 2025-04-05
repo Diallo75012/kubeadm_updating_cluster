@@ -21,7 +21,7 @@ spec:
     path: /tmp/local-pv
   # here creating the node affinity constraint
   nodeAffinity:
-    # required OR preferred
+    # required ONLY: NO `preferred` Nor `DuringSchedulingIgnoreDuringExecution`
     required:
       nodeSelectorTerms:
       - matchExpressions:
