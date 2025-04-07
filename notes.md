@@ -4045,10 +4045,230 @@ so manually create `StorageClasses` using `yaml` file and with different names b
 # kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
 # kubectl patch storageclass local-path -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
 ```
-__________________________________________________________________
+
+___________________________________________________________________________________________
+
+# Backup & Restore
+source: (kubernetes doc on etcd backup and restore)[https://kubernetes.io/docs/tasks/administer-cluster/configure-upgrade-etcd/]
+- **Little resume:**
+When we talk about backup and restore is all about ETCD. 
+We need to go inside the pod which is present in the namespace `kube-system`.
+Then do the work of creating snapshots but it stays inside the pod. Which is actually sharing same path with the underlying node filesystem.
+Therefore, can be accessed at `/var/lib/etcd/` which has been defined as volume in `/etc/kubernetes/manifests/etcd.yaml`.
+
+**Why no StorageClass, PVC and PV?**
+Because:
+- Needs to start before Kubernetes APIs and controllers are even online
+- Must not depend on the Kubernetes scheduler or provisioners
+- Is managed as a static pod (host-managed, not API-managed)
+
+So here we can see that `etcd` is not using the same process and not passing by the API server.
+
+- ckech `etcd` version
+```yaml
+kubectl exec -n kube-system etcd-controller.creditizens.net -- etcdctl version
+etcdctl version: 3.5.15
+API version: 3.5
+```
+
+## ETCD Backup
+
+- go inside the `etcd pod` and make a snapshot. No matter how many controller in the cluster all `etcd` present in each `controller` nodes would be saved
+  in that snapshot.
+  So here in the node file path the backup snapshot would be in the folder `/var/lib/etcd/`.
+
+**Command running it from the node terminal, running it inside the `etcd` pod**
+```yaml
+kubectl exec -n kube-system etcd-<your-controller-node-name> -- \
+  etcdctl --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+          --cert=/etc/kubernetes/pki/etcd/server.crt \
+          --key=/etc/kubernetes/pki/etcd/server.key \
+          snapshot save /var/lib/etcd/backup.db
+```
+
+**Command running it from the node terminal, outside this time of the `etcd` pod so just terminal to snapshop directly**
+Here `ETCDCTL_API=3` is telling which version of `etcd` API we are running on the cluster (here since vercion etcd 3.5)
+need to install the binary `etcdctl` so have it available to run the command:
+```bash
+# get your version of `etcd` or check online which `etcd` version matches your `kubernetes` version: https://kubernetes.io/releases/version-skew-policy/#etcd
+kubectl exec -n kube-system etcd-controller.creditizens.net -- etcdctl version
+etcdctl version: 3.5.15
+API version: 3.5
+# then use that version number to get the release, if not available go to their `github and check versions available in the releases`: https://github.com/etcd-io/etcd/releases
+curl -LO https://github.com/etcd-io/etcd/releases/download/v3.5.10/etcd-v3.5.15-linux-amd64.tar.gz
+tar xzvf etcd-v3.5.15-linux-amd64.tar.gz
+sudo mv etcd-v3.5.15-linux-amd64/etcdctl /usr/local/bin/
+```
+```yaml
+sudo ETCDCTL_API=3 etcdctl \
+  --endpoints=https://127.0.0.1:2379 \
+  --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+  --cert=/etc/kubernetes/pki/etcd/server.crt \
+  --key=/etc/kubernetes/pki/etcd/server.key \
+  snapshot save /var/lib/etcd/backup.db
+```
+- accessory command if can't ssh to one of the controller nodes using `kubectl cp` command to copy the snapshot to another node file system path.
+```yaml
+# Copy from pod to controller node
+kubectl cp kube-system/etcd-<your-node-name>:/var/lib/etcd/backup.db ./backup.db
+```
+
+- can inspect the metadata of the backup
+The backup is not human readable as it is a binary file (type LevelDB)
+```bash
+ETCDCTL_API=3 etcdctl snapshot status backup.db
+```
+
+- Options to encrypt the `etcd` snapshot
+It can't be encrypted but ....
+  - can encrypt the data saved to it at rest meaning inside the cluster when saving to `etcd` all would be saved but in an encrypted form
+    Kuberneted permits to save at rest using an encryption file: `/etc/kubernetes/encryption-config.yaml`
+    Used for encrypting Secrets, ConfigMaps, etc., before writing to etcd.
+  - encrypt after having made the snapshot using: 
+    - `OpenSSL`:
+      ```bash
+      # encrypt
+      openssl enc -aes-256-cbc -salt -in backup.db -out backup.db.enc
+      # decrypt
+      openssl enc -d -aes-256-cbc -in backup.db.enc -out backup.db
+      ```
+    - `GPG`:
+      ```bash
+      # encrypt
+      gpg -c backup.db
+      # decrypt:
+      ```bash
+      gpg -d backup.db.gpg > backup.db
+      ```
+    - `s3` or `Vault`:
+      so here moving the snapshot to s3 and enabling AES or KMS encryption
+      or using Hashicorp Vault and saving it there.
+
+`OR`
+use `etcdutl`:
+(it is installed with the binary when you install the `etcdctl` binary)
+- Encrypt snapshot: The encryption key must be a symmetric key (usually 32 chars)
+```bash
+etcdutl snapshot encrypt --input backup.db --output backup.encrypted.db --key myencryptionkey_very_long_string
+```
+- Decrypt snapshot (key must be a symmetric key (usually 32 chars))
+```bash
+etcdutl snapshot decrypt --input backup.encrypted.db --output backup.db --key myencryptionkey_very_long_string
+```
+- Inspect metadata
+```bash
+etcdutl snapshot status backup.db
+```
+
+### Can we get a snapshot and use it in a completely new cluster different from the one where the snapshot has been made?
+Yes but... Headacke as, all thsoe components must match:
+- Kubernetes version: strongly recommended
+- etcd version: Match snapshot format
+- Cluster name: Specified in kubeadm config
+- API Server certs (SANs): Needed for consistent identity
+- CNI plugin (e.g., Calico, Cilium): Recommended Some network state is in etcd
+
+
+### What won’t be restored from the snapshot?
+- Kubelet certificates
+- Kubeconfig files
+- Filesystem volumes
+- Kubeadm configuration (stored outside etcd)
+
+
+# Restore
+**Important Node:** 
+Restoration of `etcd` will create downtime in the cluster as the `controller` is not working if `etcd` is not there. 
+But this will afftect only `controller` nodes, the `worker` ndoes and their workload wouldn't be affected.
+So pods would still run normally and `calico` as well and networking as well as `ingress`.
+Just can't :
+  - use any `kubectl` commands
+  - `kubeadm` commands
+  - schedule new pods
+  - `HPA` (autoscaling), `Jobs` as relying on `APIserver` wont works
+so still a risk of issues with pods failing. but it is fine.i
+
+
+- make sure that the APIserver is not running and that the `volumes`, `hostpath` and `--data-dir` folders match where the snapshot is
+  so here can mv the manifest `/etc/kubernetes/manifests/etcd.yaml` to another folder to restart the api server or just change one config in it and it will restart, then bring it back to the `/etc/kubernetes/manifests/` folder or change the config that you have changed before back to it normal state.
+  all this are tricks to restart APIserver
+- stop `kubelet` service
+- **Note:** The documentation is suggesting that some features of `etcdctl` might become deprecated like the one to check `status` which will be deprecated
+  therefore, they suggest that we use the `util` one `etcdutl` to create snapshots and resore as well.
+  so just change commands by replacing `etcdctl` by `etcdutl`
+  eg.:`etcdutl --write-out=table snapshot status snapshot.db `
+```bash
+etcdutl --data-dir <data-dir-location> snapshot restore snapshot.db
+```
+so here `--data-dir` will be the directory that will be created during the restore process (from doc info)
+if no validation `hash` present as snapshot created from a specific directory different from the `snapshot save` one, can run the command with option `--skip-hash-check` has normal `snapshot restore` only would check for integrity using that `hash` but sometimes it is not present (like for restore to new cluster for example). See doc of `etcd` for that: (doc etcd)[https://etcd.io/docs/v3.6/op-guide/recovery/#restoring-a-cluster]
+(eg. with more options:`etcdutl snapshot restore snapshot.db --bump-revision 1000000000 --mark-compacted --data-dir output-dir`)
+- restarts APIserver
+
+### Full restore example
+- prerequisite: have `etcdctl` or `etcdutl` installed
+- your `backup.db` binary file
+- `/etc/kubernetes/manifests/etcd.yaml` file present
+
+.1 Stop `APIserver`:
+`Kubelet` will see that `APIServer` stopped and the `controller` node will stop
+```bash
+sudo mv /etc/kubernetes/manifests/etcd.yaml /etc/kubernetes/manifests/etcd.yaml.bak
+```
+
+.2 stop `kubelet`
+```bash
+sudo systemctl stop kubelet
+```
+
+.3 Restore
+```bash
+sudo ETCDCTL_API=3 etcdutl snapshot restore /var/lib/etcd/backup.db --data-dir /var/lib/etcd-restore
+```
+- `/var/lib/etcd/backup.db`: full path to the existing snapshot file
+- `--data-dir` `/var/lib/etcd-restore`: folder where etcd will reconstruct the DB.
+  The folder you indicate here will be created if it doesn't exist, no need manual creation beforehands.
+
+.4 Update the `etcd.yaml` file's dir path to look at (only if needed)
+```bash
+sudo nano /etc/kubernetes/manifests/etcd.yaml.back
+```
+Look for the --data-dir flag and change:
+```yaml
+--data-dir=/var/lib/etcd
+```
+to:
+```yaml
+--data-dir=/var/lib/etcd-restore
+```
+Also update the hostPath volume mount if needed:
+```yaml
+- name: etcd-data
+  hostPath:
+    path: /var/lib/etcd-restore
+    type: DirectoryOrCreate
+```
+
+.5 now change the backup name back to its original for the `APIserver` so that when restarteing kubelet it would pick it up with new config and restart
+```bash
+sudo mv /etc/kubernetes/manifests/etcd.yaml.back /etc/kubernetes/manifests/etcd.yaml
+```
+
+.6 Restart `kubelet`
+```bash
+sudo systemctl start kubelet
+```
+
+-7 Enjoy the cluster with restored backup
+```bash
+kubectl get pods -n kube-system
+```        
+
+_________________________________________________________________
 # Next
 - [ ] do those kubernetes concepts:
-    - [ ] Storage, Backup and Recovery
+    - [x] Storage
+    - [ ] Backup and Recovery
     - [ ] Resources Limits
     - [ ] Cronjob, Jobs
     - [ ] Damonsets
