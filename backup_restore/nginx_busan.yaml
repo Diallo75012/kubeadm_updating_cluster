@@ -1,0 +1,34 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: busan-message
+data:
+  index.html: |
+    <h1 style="color:blue;">We are enjoying our holidays in Busan</h1>
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: nginx-busan
+  name: nginx-busan
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nginx-busan
+  template:
+    metadata:
+      labels:
+        app: nginx-busan
+    spec:
+      containers:
+      - image: nginx
+        name: nginx
+        volumeMounts:
+          - name: busan-message-volume
+            mountPath: /usr/share/nginx/html/
+      volumes:
+      - name: busan-message-volume
+        configMap:
+          name: busan-message
