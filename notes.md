@@ -4190,7 +4190,7 @@ so still a risk of issues with pods failing. but it is fine.i
 
 
 - make sure that the APIserver is not running and that the `volumes`, `hostpath` and `--data-dir` folders match where the snapshot is
-  so here can mv the manifest `/etc/kubernetes/manifests/etcd.yaml` to another folder to restart the api server or just change one config in it and it will restart, then bring it back to the `/etc/kubernetes/manifests/` folder or change the config that you have changed before back to it normal state.
+  so here can mv all the manifest like `/etc/kubernetes/manifests/etcd.yaml` to another folder to restart the api server or just change one config in it and it will restart, then bring it back to the `/etc/kubernetes/manifests/` folder or change the config that you have changed before back to it normal state.
   all this are tricks to restart APIserver
 - stop `kubelet` service
 - **Note:** The documentation is suggesting that some features of `etcdctl` might become deprecated like the one to check `status` which will be deprecated
@@ -4215,21 +4215,21 @@ sudo etcdutl snapshot restore /my/custom/path/location/my_backup.db --data-dir /
 
 ### Full restore example
 - prerequisite: have `etcdctl` or `etcdutl` installed
-- your `backup.db` binary file
+- your `backup.db` binary file somewhere in your `Filesystem`, `Hashicorp Vault` or `AWS s3`
 - `/etc/kubernetes/manifests/etcd.yaml` file present
 
 
-
-.1 Stop `APIserver`:
-`Kubelet` will see that `etcd.yaml` stopped and the `controller` node will stop
-```bash
-sudo mv /etc/kubernetes/manifests/etcd.yaml /etc/kubernetes/manifests/etcd.yaml.bak
-```
-
-.2 Stop Kubelet
+.1 Stop Kubelet
 # stop kubelet because otherwise it will keep runnign and recreate the `member` folder that we want to get rid of to create a new one on snapshot restoration 
 ```bash
 sudo systemctl stop kubelet
+```
+
+.2 Stop all component of controller by moving the `.yaml` files from `/etc/kubernetes/manifests/` folder:
+`Kubelet` will see that `etcd.yaml` stopped and the `controller` node will stop
+```bash
+# example with `etcd.yaml` but do it for all other components as well `sheduler`, `apiserver`, `controller manager`
+sudo mv /etc/kubernetes/manifests/etcd.yaml /etc/kubernetes/manifests/etcd.yaml.bak
 ```
 
 .3 Restore
@@ -4266,7 +4266,7 @@ Also update the hostPath volume mount if needed:
     type: DirectoryOrCreate
 ```
 
-.5 now change the backup name back to its original for the `etcd.yaml` so that when restarteing kubelet it would pick it up with new config and restart
+.5 now change the backup name back to its original for the `etcd.yaml` and all other `.yaml` files in `/etc/kubernetes/manifests/` that when restarteing kubelet it would pick it up with new config and restart
 ```bash
 sudo mv /etc/kubernetes/manifests/etcd.yaml.back /etc/kubernetes/manifests/etcd.yaml
 ```
