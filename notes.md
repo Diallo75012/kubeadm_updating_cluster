@@ -4397,10 +4397,639 @@ fter this fix so adding those flags `--bump-revision` bigger than last snapshot 
 **- the issue is not from using `etcdutl` or `etcdctl` for restoration, you can use `etcdctl` for snapshot creation and the other `etcdutl` for restoration. The issue is more due to other components of the cluster having state of the older cluster. so mistmatch between snapshot state and some controller plane components ones. = `stale watches` issues.**
 
 _________________________________________________________________
+
+# Resource Limits
+
+soource: (doc resources limites)[https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/]
+
+`cpu` and `memory` limits can be set at the `container` level, the `pod` level (not in the version I am using now 1.28 but in the latest 1.32 yes and will be updating the cluster later to it using a rust coded custom app that upgrades kubernetes cluster just by providing kubelet and kubeadm and containerd desired versions). Also it can be set at `namespace` level.
+
+
+## Limits, Requests, Hugepages, EmptyDir, Ephemeral-Storage
+
+### Limits
+- `limits`: is the maximum that the resource can consume and it is a:
+  - `cpu`: Hard limit (`cpu` throttling)
+  - `memory`: Not hard limit **but when resource consume too much there is a `OOM` (Out Of Memory) kill process that is done in the `kernel`**
+              Therefore, here a container can use more than its limit and the kernel can kill it if there is memory pressure.
+
+### Requests
+- `requests`: is the minimum that the resource is consuming.
+
+### Hugepages
+- `hugepages-2Mi`: can also be used but alone so not in conjunction with `cpu` and `memory` and this would need to be customized as sytem default `pages`
+                   are 4Ki and you might want to use that because you want better performance and have bigger pages so that data is processed in bigger chunks.
+                   `hugepages` are a separate pool of memory reserverd at the `os` level.
+
+- reduces `cpu` usage with those bigger chunks. here it from default `4Ki` pages, page would be `2Mi` chunks and there is also another one `hugepages-1Gi` (bigger chunks, but we are not going to use it here).
+From ChatGPT: `Reducing Translation Lookaside Buffer (TLB) misses. Reducing CPU cycles wasted in virtual-to-physical memory mapping` 
+  - typically used only for specific workload: `databases`, `in-memory caches like Redis`, `virtual machines`, `AI models`, or `networking software`.
+  - eg. This tells the scheduler: "Schedule this pod on a node that has 512Mi worth of 2Mi hugepages."
+  ```yaml
+  requests:
+    hugepages-2Mi: 512Mi
+  limits:
+    hugepages-2Mi: 512Mi
+  ```
+
+- if you want to use `hugepages` **with** `cpu` or `memory` or both, you need to have another container in your spec. that would be dedicated to limit the pod usage of those resources, so no effect ont hat specific container but would be taken into account by the sceduler when performing calculation of resources limits totals and policies enforcements on resources usage in `namespace` for eg. here. 
+
+- need also to **change the settings** of `GRUB` in the node itself adding line in config file:
+  ```bash
+  # This allocates 512 x 2MB = 1GB of hugepage memory at boot.
+  default_hugepagesz=2M hugepagesz=2M hugepages=512
+  ```
+
+- check this example where it is not set as custom:
+```bash
+cat /proc/meminfo
+
+Outputs:
+MemTotal:        3961464 kB
+MemFree:          406324 kB
+MemAvailable:    2053944 kB
+Buffers:           56092 kB
+Cached:          1795716 kB
+SwapCached:            0 kB
+Active:          2003880 kB
+Inactive:         963176 kB
+Active(anon):    1021784 kB
+Inactive(anon):   133900 kB
+Active(file):     982096 kB
+Inactive(file):   829276 kB
+Unevictable:           0 kB
+Mlocked:               0 kB
+SwapTotal:             0 kB
+SwapFree:              0 kB
+Zswap:                 0 kB
+Zswapped:              0 kB
+Dirty:                72 kB
+Writeback:             0 kB
+AnonPages:       1115248 kB
+Mapped:           826060 kB
+Shmem:             40436 kB
+KReclaimable:      81552 kB
+Slab:             254520 kB
+SReclaimable:      81552 kB
+SUnreclaim:       172968 kB
+KernelStack:       15584 kB
+PageTables:        25608 kB
+SecPageTables:         0 kB
+NFS_Unstable:          0 kB
+Bounce:                0 kB
+WritebackTmp:          0 kB
+CommitLimit:     1980732 kB
+Committed_AS:    6044628 kB
+VmallocTotal:   34359738367 kB
+VmallocUsed:       37396 kB
+VmallocChunk:          0 kB
+Percpu:           118272 kB
+HardwareCorrupted:     0 kB
+AnonHugePages:         0 kB
+ShmemHugePages:        0 kB
+ShmemPmdMapped:        0 kB
+FileHugePages:         0 kB
+FilePmdMapped:         0 kB
+Unaccepted:            0 kB
+HugePages_Total:       0
+HugePages_Free:        0
+HugePages_Rsvd:        0
+HugePages_Surp:        0
+Hugepagesize:       2048 kB
+Hugetlb:               0 kB
+DirectMap4k:      169792 kB
+DirectMap2M:     4024320 kB
+DirectMap1G:     2097152 kB
+```
+
+- From ChatGPT, advantages of `hugepages`:
+```bash
+Using hugepages (2MB or 1GB):
+- Fewer pages = fewer entries in the page table
+- Less overhead in TLB/cache misses
+- Better memory access speed and CPU efficiency
+```
+
+- how to setup custom HugePages on the linux node:
+Edit the kernel boot parameters (via GRUB):
+```bash
+sudo nano /etc/default/grub
+```
+Add this to `GRUB_CMDLINE_LINUX` to reserve 512 `hugepages` of 2MB each = 1GB of `RAM` 
+```bash
+default_hugepagesz=2M hugepagesz=2M hugepages=512
+```
+Then update GRUB and reboot:
+```bash
+sudo update-grub
+sudo reboot
+```
+Verify the Node Reservation after reboot:
+```bash
+grep Huge /proc/meminfo
+```
+rollback:
+```bash
+sudo nano /etc/default/grub
+# Remove or comment:
+# default_hugepagesz=2M hugepagesz=2M hugepages=512
+```
+Re-run:
+```bash
+sudo update-grub
+sudo reboot
+```
+
+- `yaml` file example for one pod:
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: hugepages-demo
+spec:
+  containers:
+  - name: app
+    image: busybox
+    command: ["sleep", "3600"]
+    resources:
+      limits:
+        # 128 x 2Mi hugepages = 256Mi
+        hugepages-2Mi: 256Mi
+  restartPolicy: Never
+```
+
+### EmptyDir
+- The use of `emptyDir` in `volumes` to share data between pods could be problematic if not controlled as there is no cap in how much resource it would use.
+  on the `node`. Therefore, we need to control that with some limits.
+
+- `ephemeral-storage` way:
+`emptyDir` is under the hood using `ephemeral-storage` so we can play with that resource to limit its usage.(resume)
+
+Volumes can be a local path or can be also in `RAM` so the volume is there but `ephemeral`. We will see `ephemeral-storage` after for the resource limitation of it but can use actualy that to limit the usage of `emptyDir` resources as the pod would be killed by kubernetes if it uses more resources than the limits allowed one the `ephemeral- storage` resource. (`cpu`, `memory`, `ephemeral-storage` are all also resources, keep this in mind)
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: limit-ephemeral
+spec:
+  containers:
+  - name: app
+    image: busybox
+    command: ["sh", "-c", "dd if=/dev/zero of=/data/file bs=1M count=500"]
+    volumeMounts:
+    - mountPath: /data
+      name: cache-volume
+    resources:
+      requests:
+        ephemeral-storage: "200Mi"
+      limits:
+        # this would be used as limit for the `volumes.emptyDir`
+        ephemeral-storage: "500Mi"
+  volumes:
+  - name: cache-volume
+    # now this volume is limited to the `spec.containers[0].resources.limits.ephemeral-storage` of 500Mi, more use would kill the pod
+    # after it depends on its restart policy or type of pod...
+    emptyDir: {}
+````
+
+- `sizeLimit` way:
+We can also set a size limit on the `emptyDir` `volumes`
+In the next example we bind this `emptyDir` path to the `RAM` using `medium: Memory` option. So it will be here limited to `sizeLimit: 64Mi`.
+If we don't use the option `medium: Memory` (`RAM`-based temporary volume) it will be just using the underlying physical filesystem so `disk` or `ssd` depend on the path indicated and node connected resources made available.
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ram-cache
+spec:
+  containers:
+  - name: app
+    image: busybox
+    command: ["sh", "-c", "echo Hello > /cache/hello && sleep 3600"]
+    volumeMounts:
+    - name: ram-vol
+      mountPath: /cache
+  volumes:
+  - name: ram-vol
+    emptyDir:
+      # this option would be using in-`RAM` `Memory` for this `ephemeral-storage` (udner the hood)
+      medium: Memory
+      sizeLimit: 64Mi
+```
+
+### Ephemeral-Storage
+This is what is used under the hood by `emptyDir`, `logs`, `image layers` and more...
+On `ephemeral-storage` can be set `limits` and `requests` and also what is nice here is that it **CAN** be used in combinaison of `cpu` and `memory` resources `limits/requests`
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: full-limits-example
+spec:
+  containers:
+  - name: app
+    image: busybox
+    command: ["sh", "-c", "echo Hello Junko && sleep 3600"]
+    volumeMounts:
+    - mountPath: /data
+      name:  some-volume-normally-not-limited-but-here-limites-by-epheremal-storage
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+        ephemeral-storage: "100Mi"
+      limits:
+        cpu: "500m"
+        memory: "256Mi"
+        ephemeral-storage: "500Mi"
+  volumes:
+  - name: some-volume-normally-not-limited-but-here-limites-by-epheremal-storage
+    emptyDir: {}
+```
+
+## Units Used For Resource Limits Indication: Base-10, Base-2
+We have two different ways that it is calculated depending on if it is `RAM` (`decimal` base-10) based calculation of `bytes` or `CPU` way (`binary` base-2) based calculations.
+They both use different units.
+- Decimal units	10	-> 1M = 1,000,000 -> expressed: k, M, G, etc.
+- Binary units	2	1Mi = 1,048,576 -> expressed: Ki, Mi, Gi, etc.
+
+Using the documentation example, let's explain how it is calculated:
+```bash
+128974848  
+129e6  
+129M  
+123Mi
+```
+- 128974848 (`raw bytes`)
+This is already in bytes.
+```bash
+128,974,848 bytes
+```
+- 129e6 (scientific notation = 129 million `decimal`)
+```bash
+129e6 = 129 * 10^6 = 129,000,000 bytes
+```
+- 129M (129 megabytes in base 10 `decimal`)
+```bash
+129M = 129 * 1,000,000 = 129,000,000 bytes
+```
+- 123Mi (123 mebibytes in base 2 `binary`)
+```bash
+123Mi = 123 * 1,048,576 = 128,974,848 bytes
+# got that follwoing this logic:
+1 MiB = 1024 KiB
+1 KiB = 1024 bytes
+# So,
+1 MiB = 1024 × 1024 bytes = 1,048,576 bytes
+```
+Exactly equals the raw byte value: 128974848
+
+## Limit Ranges & Resource Quotas
+source: (Doc for limit ranges)[https://kubernetes.io/docs/concepts/policy/limit-range/]
+
+### LimitRange
+- `LimitRange`:
+  - Per-container or per-pod **`default`** `request/limit` values.
+  - It does **not enforce a total cap** on the namespace.
+  - it is going to **enforce** the `limits` set to it at `pod` `admission` stage and not on `running` `pods`.
+  - there can be more than one `LimitRange` resource deployed to same namespace we don't know which will be used as `default`
+
+So here it is just a `default` not something that is going to enforce anything.
+It will for example, when you deploy a resource without any `limits` or `requests` nor any, put a `default` value for that resource.
+So we can create some `LimitRange` in order to have `default` that we decide how much those are for some resources.
+And only **new** `pods` on `admission` would be accepted or rejected (`403 forbidden`) following `limits` set in `LimitRange`
+```yaml
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: cpu-resource-constraint
+spec:
+  limits:
+  # here only `cpu` resources is set
+  - default:
+      cpu: 500m
+    defaultRequest:
+      cpu: 500m
+    max:
+      cpu: "1"
+    min:
+      cpu: 100m
+    # limit on resource `container`
+    type: Container
+```
+so if pod only have `requests` (min) limit set on `cpu` the other `limits` (max) will be set and given by the `default` `LimitRange` set `cpu` `limits`
+```yaml
+# inital `pod` applied to cluster by user
+resources:
+  requests:
+    cpu: 200m
+# final `pod ` spec.container[].resources`
+resources:
+  requests:
+    cpu: 200m
+  limits:
+    cpu: 500m  # from LimitRange
+```
+
+**Example `LimitRange` for `pod` at the `namespace-level`**
+```yaml
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: pod-limit-range
+spec:
+  limits:
+  - type: Pod
+    max:
+      cpu: "2"
+      memory: "4Gi"
+```
+
+
+
+### ResourceQuota
+source (doc resource quota)[https://kubernetes.io/docs/concepts/policy/resource-quotas/]
+
+- `ResourceQuota`
+While **`ResourceQuota`** **will enforce** `limits` on a `namespace` (in the `default` namespace in our exampel below as we didn't specify `namespace` in `metadata`). This is total sum of what all the resources in the `namespace` can consume `requests` if fine and can be passed over but `limits` not. so we have like that a range `min` `requests` and `max` `limits`.
+```yaml
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: compute-resources
+  namespace: dev
+spec:
+  hard:
+    requests.cpu: "2"
+    limits.cpu: "4"
+    requests.memory: "2Gi"
+    limits.memory: "4Gi"
+```
+
+Another ResourceQuota now not in `default` `namespace` so need to indicate the `namespace` in `metadata`:
+```yaml
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: compute-resources
+  namespace: dev
+spec:
+  hard:
+    requests.cpu: "2"
+    limits.cpu: "4"
+    requests.memory: "2Gi"
+    limits.memory: "4Gi"
+```
+
+- can set a priorityclass in `ResourceQuota` and `pods` could then reference any of those to group `pods` in a `certain` `policy` way of using `ResourceQuota`
+Here an exampel of several `ResourceQuota` from the doc defined:
+```yaml
+apiVersion: v1
+kind: List
+items:
+- apiVersion: v1
+  kind: ResourceQuota
+  metadata:
+    name: pods-high
+  spec:
+    hard:
+      cpu: "1000"
+      memory: "200Gi"
+      pods: "10"
+scopeSelector:
+      matchExpressions:
+      - operator: In
+        scopeName: PriorityClass
+        values: ["high"]
+- apiVersion: v1
+  kind: ResourceQuota
+  metadata:
+    name: pods-medium
+  spec:
+    hard:
+      cpu: "10"
+      memory: "20Gi"
+      pods: "10"
+    scopeSelector:
+      matchExpressions:
+      - operator: In
+        scopeName: PriorityClass
+        values: ["medium"]
+- apiVersion: v1
+  kind: ResourceQuota
+  metadata:
+    name: pods-low
+  spec:
+    hard:
+      cpu: "5"
+      memory: "10Gi"
+      pods: "10"
+    scopeSelector:
+      matchExpressions:
+      - operator: In
+        scopeName: PriorityClass
+        values: ["low"]
+
+```
+then the `pod` would reference one of those `ResourceQuota`
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: high-priority
+spec:
+  containers:
+  - name: high-priority
+    image: ubuntu
+    command: ["/bin/sh"]
+    args: ["-c", "while true; do echo hello; sleep 10;done"]
+    resources:
+      requests:
+        memory: "10Gi"
+        cpu: "500m"
+      limits:
+        memory: "10Gi"
+        cpu: "500m"
+  priorityClassName: high
+```
+
+#### `scopeSelector` to track specific resources and restrict
+So here it is a way to have a more fine grained control on resources `limits` consumption.
+
+- resources tracked and that can be restricted:
+```markdown
+pods
+cpu
+memory
+ephemeral-storage
+limits.cpu
+limits.memory
+limits.ephemeral-storage
+requests.cpu
+requests.memory
+requests.ephemeral-storage
+```
+Here we **restrict** for all `pods` in `namespace` `default` to use `crossNamespaceAffinity`
+```yaml
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: disable-cross-namespace-affinity
+  namespace: foo-ns
+spec:
+  hard:
+    pods: "0"
+  scopeSelector:
+    matchExpressions:
+    - scopeName: CrossNamespacePodAffinity
+      operator: Exists
+```
+- `operator`:
+```markdown
+In
+NotIn
+Exists
+DoesNotExist
+```
+- `scopeName` requiring to use `operator: Exists`:
+```markdown
+Terminating
+NotTerminating
+BestEffort
+NotBestEffort
+```
+- `scopeName` not requiring to use `operator: Exists`:
+```markdown
+CrossNamespacePodAffinity
+PriorityClass
+```
+- if `operator: In/NotIn` we have to indicate `values`:
+```yaml
+  scopeSelector:
+    matchExpressions:
+      - scopeName: PriorityClass
+        operator: In
+        values:
+          - middle
+```
+
+- example `pods` in `namespace` not allowed to have 'cross namespaces affinity'
+example for doc that make `pod` limited to their own namespace `foo-ns` the pods created in `` as they won't be able to use `CrossNamespacePodAffinity`
+as `spec.hard.pods: "0"`. so no `pod` is allowed to be in affinity out of the namespace `foo-ns`:
+```yaml
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: disable-cross-namespace-affinity
+  namespace: foo-ns
+spec:
+  hard:
+    pods: "0"
+  scopeSelector:
+    matchExpressions:
+    - scopeName: CrossNamespacePodAffinity
+      operator: Exists
+```
+- example *advanced** configuring `kube-apiserver`
+`CrossNamespacePodAffinity` can be set as a **limited resource** by setting the `kube-apiserver` flag `--admission-control-config-file` 
+where we would indicate the path of where is the below `yaml` file `kind: AdmissinConfiguration`
+
+Here pods can use `namespaces` and `namespaceSelector` in `pod affinity` **only** if the `namespace` where they are created have a `ResourceQuota` object 
+with `CrossNamespacePodAffinity` `scopeName` and a `hard` `limit` **greater than or equal to the number of pods** using those fields.
+
+```yaml
+apiVersion: apiserver.config.k8s.io/v1
+kind: AdmissionConfiguration
+plugins:
+- name: "ResourceQuota"
+  configuration:
+    apiVersion: apiserver.config.k8s.io/v1
+    kind: ResourceQuotaConfiguration
+    limitedResources:
+    - resource: pods
+      matchScopes:
+      - scopeName: CrossNamespacePodAffinity
+        operator: Exists
+```
+
+- some other examples of `ResourceQuota` from ducomentation to understand it more, but need to check documentation for more advanced stuff like default `PriorityClass` consumption
+(eg.: compute-resources.yaml)
+```yaml apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: compute-resources
+spec:
+  hard:
+    requests.cpu: "1"
+    requests.memory: "1Gi"
+    limits.cpu: "2"
+    limits.memory: "2Gi"
+    requests.nvidia.com/gpu: 4
+```
+
+(eg.: object-counts.yaml)
+```yaml
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: object-counts
+spec:
+  hard:
+    configmaps: "10"
+    persistentvolumeclaims: "4"
+    pods: "4"
+    replicationcontrollers: "20"
+    secrets: "10"
+    services: "10"
+    services.loadbalancers: "2"
+```
+
+### Example LimitRange Interaction and Logic With ResourceQuota
+- example of rules and how `pod` `scheduling` would react to `LimitRange` and `ResourceQuota` set in same `namespace`:
+we have: 
+A `LimitRange` that sets default `cpu` `requests` = 150m, `limits` = 500m
+A `ResourceQuota` that says `limits.cpu` = 2
+
+We launch **5** `pods` with no `cpu` `requests/limits` in their specs.
+Due to the default values from the `LimitRange`, each one gets 500m limit.
+
+Now:
+5 `pods` × 500m `limits` = 2500m = 2.5 cores
+But your `ResourceQuota` is only 2 cores!
+
+Result: The 5th `pod` will **not be scheduled** — even though it has valid `limits`, because it would **exceed the `namespace` `ResourceQuota`**.
+
+### RuntimeClass
+`RuntimeClass` is to allocate resources to the runtime used, I use `runc` (as the `handler`) which is default to `containerd` `CNI` (container runtime interface) as the `container runtime` and we call allocated resources to it as well:
+
+Supported Alternatives (`Pod-level` resource usage)
+`pod` Overhead (with `RuntimeClass`)
+`RuntimeClass` is a `cluster` scope resource and not `namespaced`
+When using `RuntimeClass` (e.g. of others other than `runc`: `gvisor` or `kata-containers`), 
+you can define a `Pod-level overhead`, which **adds additional `cpu/memory` usage per `pod`**:
+```yaml
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: my-runtime
+handler: runc
+overhead:
+  podFixed:
+    memory: "128Mi"
+    cpu: "250m"
+```
+Then reference it in your Pod:
+```yaml
+spec:
+  runtimeClassName: my-runtime
+```
+
+Next need to finish with `ValidationAdmissionPolicy`
+_________________________________________________________________
 # Next
 - [ ] do those kubernetes concepts:
     - [x] Storage
-    - [ ] Backup and Recovery
+    - [x] Backup and Recovery
     - [ ] Resources Limits
     - [ ] Cronjob, Jobs
     - [ ] Damonsets
