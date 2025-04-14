@@ -5000,6 +5000,13 @@ But your `ResourceQuota` is only 2 cores!
 Result: The 5th `pod` will **not be scheduled** — even though it has valid `limits`, because it would **exceed the `namespace` `ResourceQuota`**.
 
 ### RuntimeClass
+check `Runtime` running on specific `node`:
+```bash
+kubectl get node node1.creditizens.net -o jsonpath='{.status.nodeInfo.containerRuntimeVersion}'
+Outputs:
+containerd://1.7.25
+```
+
 `RuntimeClass` is to allocate resources to the runtime used, I use `runc` (as the `handler`) which is default to `containerd` `CNI` (container runtime interface) as the `container runtime` and we call allocated resources to it as well:
 
 Supported Alternatives (`Pod-level` resource usage)
@@ -5024,13 +5031,57 @@ spec:
   runtimeClassName: my-runtime
 ```
 
-Next need to finish with `ValidationAdmissionPolicy`
+**Important to know about `RuntimeClass`**
+- All configs of our runtime `containerd` are here: `/etc/containerd/config.toml` and this is where it is also named `runc` for the handler name to reference `containerd` as runtime.(`[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.${HANDLER_NAME}]`)
+- Also `RuntimeClass` accepts scheduling option to make sure that `pods` end out in nodes having the correct `label` which tells that a certain `Runtime` is ready and installed on that `node` using for example `runtimeclass.scheduling.nodeSelector`. Also if `node` have a `taint`, `toleration` can be set in `RuntimeClass`. Here also the intersection between `RuntimeClass`, `Pod`, `Node`, selectors/taints/tolerations would affect `pod` to where the right `Runtime` `handler` is installed. If it is not matching `pod` will be **evicted**. And all is done **at `pod` admission** stage. So lot of checks and more control over where workload ends out to run.
+- `RuntimeClass` selects the container runtime handler to use for running the Pod.
+- `RuntimeClass` does not control or enforce CPU, memory, or storage limits.
+- `RuntimeClass` is not a resource quota or limit in itself.
+- `ValidationAdmissionPolicy` could be used to restrict `pod` to a certain `namespace` using `RuntimeClass` but it is not what we are going to see here, we might see `ValidationAdmissionPolicy` in another chapter by itself for max `ReplicaSet` on `Deployments` policy limitation creation.
+
+- `RuntimeClass` can be used in `pod` where you **NEED TO** set `requests` and `limits` for the `pod` resources consumption.
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: secure-pod
+spec:
+  runtimeClassName: my-runtime
+  containers:
+  - name: app
+    image: myapp
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "256Mi"
+      limits:
+        cpu: "1"
+        memory: "512Mi"
+
+```
+- get `RuntimeClasses`:
+but here normally you would not see anything as Kubernetes by default doesn't create a `RuntimeClass`.
+This is something special that need to be set in `kubelet` config and use a special `admission` and probably activate a `feature gate` like `PodOverhead` for eg..
+```bash
+kubectl get runtimeclass
+```
+So the feature gate `PodOverhead` is enabled by default in kubernetes v1.28, but it can be manually activated in `kubelet` yaml file, by adding:
+```yaml
+# /var/lib/kubelet/config.yaml
+--feature-gates=PodOverhead=true
+# then restart kubelet
+sudo systemctl restart kubelet
+```
+
+So why would I need to set an `pod` `overhead` to allocate resources for the `runtime` used by containers?
+Because some runtime use some `cpu` and `memory` and it is not counted by `scheduler` so pod might look like `cheaper` in resources which can create `OOM Kills` or `CPU starvation` so we might want to have full control as with 2 pods it is fine but with 20000 pods it will have an impact so we **limit and indicate** how much resource can be used by the `runtime` and `scheduler` will take it into account in its calculation. therefore, better `pod` repartition accros `nodes`. 
 _________________________________________________________________
 # Next
 - [ ] do those kubernetes concepts:
     - [x] Storage
     - [x] Backup and Recovery
     - [ ] Resources Limits
+    - [ ] Admission Policy
     - [ ] Cronjob, Jobs
     - [ ] Damonsets
     - [ ] Kubernetes Kustomize
