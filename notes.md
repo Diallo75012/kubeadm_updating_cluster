@@ -4688,6 +4688,12 @@ Exactly equals the raw byte value: 128974848
 source: (Doc for limit ranges)[https://kubernetes.io/docs/concepts/policy/limit-range/]
 
 ### LimitRange
+It is a `namespaced` resource.
+```bash
+k api-resources | grep "limitranges"
+limitranges                       limits       v1                                     true         LimitRange
+```
+
 - `LimitRange`:
   - Per-container or per-pod **`default`** `request/limit` values.
   - It does **not enforce a total cap** on the namespace.
@@ -4749,6 +4755,11 @@ spec:
 
 ### ResourceQuota
 source (doc resource quota)[https://kubernetes.io/docs/concepts/policy/resource-quotas/]
+it is a `namespaces` resource:
+```bash
+k api-resources | grep "resorucequota"
+resourcequotas                    quota        v1                                     true         ResourceQuota
+```
 
 - `ResourceQuota`
 While **`ResourceQuota`** **will enforce** `limits` on a `namespace` (in the `default` namespace in our exampel below as we didn't specify `namespace` in `metadata`). This is total sum of what all the resources in the `namespace` can consume `requests` if fine and can be passed over but `limits` not. so we have like that a range `min` `requests` and `max` `limits`.
@@ -5075,6 +5086,228 @@ sudo systemctl restart kubelet
 
 So why would I need to set an `pod` `overhead` to allocate resources for the `runtime` used by containers?
 Because some runtime use some `cpu` and `memory` and it is not counted by `scheduler` so pod might look like `cheaper` in resources which can create `OOM Kills` or `CPU starvation` so we might want to have full control as with 2 pods it is fine but with 20000 pods it will have an impact so we **limit and indicate** how much resource can be used by the `runtime` and `scheduler` will take it into account in its calculation. therefore, better `pod` repartition accros `nodes`. 
+
+### Scenarios
+
+#### Scenario 1:
+`cpu` and `memory` units used and how it is calculated:
+RAM -> decimal 10 based -> Decimal units 10 -> 1M = 1,000,000 -> expressed: k, M, G, etc.
+CPU -> decimal 2 based -> Binary units 2 1Mi = 1,048,576 -> expressed: Ki, Mi, Gi, etc.
+
+128974848 (raw bytes) This is already in bytes.
+128,974,848 bytes
+
+129e6 (scientific notation = 129 million decimal)
+129e6 = 129 * 10^6 = 129,000,000 bytes
+
+129M (129 megabytes in base 10 decimal)
+129M = 129 * 1,000,000 = 129,000,000 bytes
+
+123Mi (123 mebibytes in base 2 binary)
+123Mi = 123 * 1,048,576 = 128,974,848 bytes (1 MiB = 1024 KiB -> 1 KiB = 1024 bytes, So 1 MiB = 1024 × 1024 bytes = 1,048,576 bytes)
+
+
+`hugepage` for better cpu usage and side pod with request/limit as can't be set together. `hugepage` can be set on nodeii custom way at :
+```bash
+sudo nano /etc/default/grub
+default_hugepagesz=2M hugepagesz=2M hugepages=512
+# Then update GRUB and reboot:
+sudo update-grub
+sudo reboot
+# Verify the Node Reservation after reboot:
+grep Huge /proc/meminfo
+# delete the line added or comemnt it out and update-grub and reboot to go back to defaut `4Ki` page
+```
+
+`emptyDir` issue and how to control
+control using `ephemeral-storage` way:
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: limit-ephemeral
+spec:
+  containers:
+  - name: app
+    image: busybox
+    command: ["sh", "-c", "dd if=/dev/zero of=/data/file bs=1M count=500"]
+    volumeMounts:
+    - mountPath: /data
+      name: cache-volume
+    resources:
+      requests:
+        ephemeral-storage: "200Mi"
+      limits:
+        # this would be used as limit for the `volumes.emptyDir`
+        ephemeral-storage: "500Mi"
+  volumes:
+  - name: cache-volume
+    # now this volume is limited to the `spec.containers[0].resources.limits.ephemeral-storage` of 500Mi, more use would kill the pod
+    # after it depends on its restart policy or type of pod...
+    emptyDir: {}
+```
+here in conjunction with `request/limit`:
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: full-limits-example
+spec:
+  containers:
+  - name: app
+    image: busybox
+    command: ["sh", "-c", "echo Hello Junko && sleep 3600"]
+    volumeMounts:
+    - mountPath: /data
+      name:  some-volume-normally-not-limited-but-here-limites-by-epheremal-storage
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+        ephemeral-storage: "100Mi"
+      limits:
+        cpu: "500m"
+        memory: "256Mi"
+        ephemeral-storage: "500Mi"
+  volumes:
+  - name: some-volume-normally-not-limited-but-here-limites-by-epheremal-storage
+    emptyDir: {}
+```
+control using `sizeLimit` way:
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+name: ram-cache
+spec:
+  containers:
+  - name: app
+    image: busybox
+    command: ["sh", "-c", "echo Hello > /cache/hello && sleep 3600"]
+    volumeMounts:
+    - name: ram-vol
+      mountPath: /cache
+  volumes:
+  - name: ram-vol
+    emptyDir:
+      # this option would be using in-`RAM` `Memory` for this `ephemeral-storage` (udner the hood)
+      medium: Memory
+      sizeLimit: 64Mi
+```
+
+use `LimitRange` to set default `resquest/limits` on pods that do not indicate it. tell that is working on pod admission to reject pod scheduling or not, but has is not enforcing anything on pod already running. so if pod have not set one of those the but limit range have set it, it will be set on pod as default.
+`container`-level `LimitRange`: 
+```yaml
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: cpu-resource-constraint
+  namespace: <not need to indicate if `default` namespace used>
+spec:
+  limits:
+  # here only `cpu` resources is set
+  - default:
+      cpu: 500m
+    defaultRequest:
+      cpu: 500m
+    max:
+      cpu: "1"
+    min:
+      cpu: 100m
+    # limit on resource `container`
+    type: Container
+```
+`pod`-level `LimitRange`:
+```yaml
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: pod-limit-range
+  namespace: <not need to indicate if `default` namespace used>
+spec:
+  limits:
+  - type: Pod
+    max:
+      cpu: "2"
+      memory: "4Gi"
+```
+
+limits for resources in the `namespace` total will use `ResourceQuota` for that
+```yaml
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: compute-resources
+  namespace: dev
+spec:
+  hard:
+    requests.cpu: "2"
+    limits.cpu: "4"
+    requests.memory: "2Gi"
+    limits.memory: "4Gi"
+```
+`ResoruceQuota` with `priorityClass` that would be referenced in `pod`:
+```yaml
+---
+apiVersion: v1
+kind: List
+items:
+- apiVersion: v1
+  kind: ResourceQuota
+  metadata:
+    name: pods-high
+    namespace: junko
+  spec:
+    hard:
+      cpu: "1000"
+      memory: "200Gi"
+      pods: "10"
+  scopeSelector:
+      matchExpressions:
+      - operator: In
+        # can also be `CrossNamespacePodAffinity` to limit pods `CrossNamespacePodAffinity` but we are going to see it here, just look at documentation
+        # need to set a `kind: AdmissionConfiguration` for `CrossNamespacePodAffinity` which will set that rule using `api-server` cluster wise but we are not going to see it here.
+        scopeName: PriorityClass
+        values: ["high"]
+- apiVersion: v1
+  kind: ResourceQuota
+  metadata:
+    name: pods-low
+    namespace: junko
+  spec:
+    hard:
+      cpu: "5"
+      memory: "10Gi"
+      pods: "10"
+    scopeSelector:
+      matchExpressions:
+      - operator: In
+        scopeName: PriorityClass
+        values: ["low"]
+
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: high-priority
+  namespace: junko
+spec:
+  containers:
+  - name: high-priority
+    image: ubuntu
+    command: ["/bin/sh"]
+    args: ["-c", "while true; do echo hello; sleep 10;done"]
+    resources:
+      requests:
+        memory: "10Gi"
+        cpu: "500m"
+      limits:
+        memory: "10Gi"
+        cpu: "500m"
+  priorityClassName: high
+```
+
+talk about `kind: RuntimeClass` taht can be used to have even more control on how much resource are allocated to container runtime as it is not calculated by `scheduler` if not set. while if set it will be considered for pod `scheduling`. when running 2 pods it is fine but when running 20000 pods with different runtimes, those will consume resoruces that can affect performance and create issues of pods being evicted because OOM killes of CPU starvation so another resource consuming RAM and CPU but not calculated correctly creating issues int he cluster. It is better to have full control and leverage kubernetes native scheduler behaviour in our favor by privideing as much detailed information to it before it decides the repartition of the workload in the cluster.
 _________________________________________________________________
 # Next
 - [ ] do those kubernetes concepts:
