@@ -27,13 +27,18 @@ spec:
     volumeMounts:
     - name: special-shared-volumes
       mountPath: /tmp/cache
+    # maybe add another container using `hugepages` and show how to set it on linus and how to get rid of it
+    # - name: hugepage
+      # mountPath: /hugepages
 
     # resources mixing `ephemeral-storage` and `memory` and `cpu`
     resources:
+      # cpu/memory/epheremeral-storate can be set together in request but NO `resquests` for `hugepages`
       requests:
         memory: "1Mi"
         cpu: "500m"
         ephemeral-storage: "1M"
+      # cpu/memory/ephemeral-storage/hugepages can all be set together in `limits`
       limits:
         # memory binary-based
         memory: "3Mi"
@@ -44,11 +49,13 @@ spec:
         cpu: "1"
         # Ephemeral Storage Example (decimal-based)
         ephemeral-storage: "3M"
-    # Ephemeral Storage only resource example (decimal-based)
-    # resources:
-      # limits:
-        # ephemeral-storage: "3M"
+        # important: with `hugepages` only `limits` are possible to set and not `requests`
+        #hugepages-2Mi: 100Mi
 
   volumes:
   - name: special-shared-volumes
     emptyDir: {}
+  # `medium` can be used because only one `hugepage` volume is used in this `yaml` otherwise would just use it `volumes` without the `medium` like: `emptyDir: {}`
+  # - name: hugepage
+    # emptyDir:
+      # medium: HugePages
