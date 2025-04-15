@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test
+  namespace: limited-resources
+spec:
+  containers:
+  - name: reader
+    image: nginx
+    volumeMounts:
+    - name: special-shared-volumes
+      mountPath: /tmp/cache
+    resources:
+      requests:
+        memory: "16Mi"
+        cpu: "250m"
+      limits:
+        memory: "32Mi"
+        cpu: "500m"
+
+  # sidecar container as container which will be having limits in resources for eg.
+  - name: writer
+    image: busybox:1.36.1
+    command: ["/bin/sh"]
+    args: ["-c", "echo 'rigoleto italian restaurant shibuya' > /tmp/cache/which_restaurant.txt && sleep 3600"]
+
+    volumeMounts:
+    - name: special-shared-volumes
+      mountPath: /tmp/cache
+
+    # resources mixing `ephemeral-storage` and `memory` and `cpu`
+    resources:
+      requests:
+        memory: "1Mi"
+        cpu: "500m"
+        ephemeral-storage: "1M"
+      limits:
+        # memory binary-based
+        memory: "3Mi"
+        # memory deciman-based
+        # memory: "3M"
+        # memmory scientific-based (pure numeric no need to use M/Mi and for templating from other tools or pragramms can be nice)
+        # memory: "3e6"
+        cpu: "1"
+        # Ephemeral Storage Example (decimal-based)
+        ephemeral-storage: "3M"
+    # Ephemeral Storage only resource example (decimal-based)
+    # resources:
+      # limits:
+        # ephemeral-storage: "3M"
+
+  volumes:
+  - name: special-shared-volumes
+    emptyDir: {}
