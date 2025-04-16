@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: LimitRange
 metadata:
-  name: meidaimae-default-request-limit-cpu
+  name: meidaimae-default-cpu-container-level
   namespace: controlled-resources
 spec:
   limits:
@@ -11,8 +11,22 @@ spec:
     defaultRequest:
       cpu: "500m"
     max:
-      cpu: "1"
+      cpu: "750m"
     min:
-      cpu: "250m"
+      cpu: "200m"
     # type here can be pod/container for eg.
     type: Container
+
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: meidaimae-default-cpu-pod-level
+  namespace: controlled-resources
+spec:
+  limits:
+  # we focus on `CPU` but you can use this file to setup default for other resources like `memory` for eg.
+  - type: Pod
+    max:
+      cpu: "2"
+      memory: "2Gi"

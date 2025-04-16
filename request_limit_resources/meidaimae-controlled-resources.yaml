@@ -3,22 +3,22 @@ kind: Pod
 metadata:
   labels:
     app: meidaimae-controlled-resources
-  name: meidaimae-controlled-resources
+  name: meidaimae-controlled-resources3
   namespace: controlled-resources
 spec:
   containers:
-  - name: meidaimae-reader
+  - name: meidaimae-reader3
     image: nginx
     # minimal way to control resources at container-level
     resources:
       requests:
         memory: "16Mi"
-        cpu: "500m"
+        #cpu: "500m"
         # emptyDir is part of what is called resource `ephemeral_storage` so lets use that to control its size
         ephemeral-storage: "1M"
       limits:
         memory: "32Mi"
-        cpu: "750m"
+        #cpu: "1"
         # `ephemeral-storage` comprise things like `images`, `emptyDir`, `CIS Drivers`...
         ephemeral-storage: "3M"
         # `hugepages` for performance enhancement, default linux size of page are 4KiB
@@ -27,11 +27,11 @@ spec:
         # hugepages-2Mi: "100Mi"
     # let's use volumes
     volumeMounts:
-    - name: special-shared-volumes
+    - name: special-shared-volumes3
       mountPath: /tmp/cache
 
   # let use sidecar container with same lifetime as pod
-  - name: meidaimae-writer
+  - name: meidaimae-writer3
     image: busybox:1.36.1
     command: ["/bin/sh"]
     args: ["-c", "echo 'rigoleto italian restaurant in Roppongi Hills this Thrusday at 6pm.' > /tmp/cache/which_restaurant.txt && sleep 3600"]
@@ -39,7 +39,7 @@ spec:
     resources:
       requests:
         memory: "1Mi"
-        cpu: "500m"
+        #cpu: "250m"
       limits:
         # memory binary-based notation
         memory: "3Mi"
@@ -47,16 +47,16 @@ spec:
         # memory: "3M"
         # scientific-based, pulerly numeric so good if using scripting templates for code. no need to use 'M/Mi'
         # memory: "3e6"
-        cpu: "1"
+        #cpu: "500m"
 
     volumeMounts:
-    - name: special-shared-volumes
+    - name: special-shared-volumes3
       mountPath: /tmp/cache
     # - name: meidaimae-hugepage
       # mountPath: /tmp/cache/meidaimae-hugepages
 
   volumes:
-    - name: special-shared-volumes
+    - name: special-shared-volumes3
       # we are going to play with this to understand why resource control is important
       # as we put a limit on `ephemeral-storage` now the 'unlimited resource (disk) consumer' `emptyDir` should be under 'control'
       emptyDir: {}
