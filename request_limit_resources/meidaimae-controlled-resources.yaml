@@ -1,0 +1,71 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    app: meidaimae-controlled-resources
+  name: meidaimae-controlled-resources
+  namespace: controlled-resources
+spec:
+  containers:
+  - name: meidaimae-reader
+    image: nginx
+    # minimal way to control resources at container-level
+    resources:
+      requests:
+        memory: "16Mi"
+        cpu: "500m"
+        # emptyDir is part of what is called resource `ephemeral_storage` so lets use that to control its size
+        ephemeral-storage: "1M"
+      limits:
+        memory: "32Mi"
+        cpu: "750m"
+        # `ephemeral-storage` comprise things like `images`, `emptyDir`, `CIS Drivers`...
+        ephemeral-storage: "3M"
+        # `hugepages` for performance enhancement, default linux size of page are 4KiB
+        # we can only set a limit for `hugepages` - `NO Requests`. doc: https://kubernetes.io/docs/tasks/manage-hugepages/scheduling-hugepages/
+        # hugepages-2Gi: 30Gi # need to be set un /etc/default/grub beforehands
+        # hugepages-2Mi: "100Mi"
+    # let's use volumes
+    volumeMounts:
+    - name: special-shared-volumes
+      mountPath: /tmp/cache
+
+  # let use sidecar container with same lifetime as pod
+  - name: meidaimae-writer
+    image: busybox:1.36.1
+    command: ["/bin/sh"]
+    args: ["-c", "echo 'rigoleto italian restaurant in Roppongi Hills this Thrusday at 6pm.' > /tmp/cache/which_restaurant.txt && sleep 3600"]
+
+    resources:
+      requests:
+        memory: "1Mi"
+        cpu: "500m"
+      limits:
+        # memory binary-based notation
+        memory: "3Mi"
+        # memory decimal-based
+        # memory: "3M"
+        # scientific-based, pulerly numeric so good if using scripting templates for code. no need to use 'M/Mi'
+        # memory: "3e6"
+        cpu: "1"
+
+    volumeMounts:
+    - name: special-shared-volumes
+      mountPath: /tmp/cache
+    # - name: meidaimae-hugepage
+      # mountPath: /tmp/cache/meidaimae-hugepages
+
+  volumes:
+    - name: special-shared-volumes
+      # we are going to play with this to understand why resource control is important
+      # as we put a limit on `ephemeral-storage` now the 'unlimited resource (disk) consumer' `emptyDir` should be under 'control'
+      emptyDir: {}
+      # we are going to see that `emptyDi`r can be limited by using limit directly here in the `volumes`
+      # so here we see that it is ignored the limit can be bypassed... so we need etheir to have a container using `ephemeral-storage`
+      # or use that storage in memory with `medium: memory`
+      # emptyDir:
+        # medium: Memory
+        # sizeLimit: 2M
+    # - name: meidaimae-hugepage
+      # emptyDir:
+        # medium: HugePages

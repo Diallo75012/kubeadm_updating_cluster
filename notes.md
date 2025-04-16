@@ -4263,7 +4263,7 @@ Also update the hostPath volume mount if needed:
 - name: etcd-data
   hostPath:
     path: /var/lib/etcd-restore
-    type: DirectoryOrCreate
+    type: DirectoryOrCreate # this would create the folder automatically by `kubelet` so no need human to go and have it created beforehands, but need to be deleted manually as it offers a way of having a persistent volume as when the pod dies the volume and data stays on the node. so becareful as well to not have node space storage taken by forgotten test volumes or other (bash script for clean up or ansible can be good and use standardisation of which path is used so that that path can be discovered and content wipped up without any issues)
 ```
 
 .5 now change the backup name back to its original for the `etcd.yaml` and all other `.yaml` files in `/etc/kubernetes/manifests/` that when restarteing kubelet it would pick it up with new config and restart
@@ -4436,6 +4436,7 @@ From ChatGPT: `Reducing Translation Lookaside Buffer (TLB) misses. Reducing CPU 
 
 - need also to **change the settings** of `GRUB` in the node itself adding line in config file:
   ```bash
+  # append to `GRUB_CMDLINE_LINUX`: `default_hugepagesz=2M hugepagesz=2M hugepages=512`
   # This allocates 512 x 2MB = 1GB of hugepage memory at boot.
   default_hugepagesz=2M hugepagesz=2M hugepages=512
   ```
@@ -4593,6 +4594,7 @@ spec:
 ````
 
 - `sizeLimit` way:
+**Works only when `ephemeral-storage` limit is set OR `medium` is used otherwise it is ignored if no `medium` is used and no `ephemeral-storage` is used.**
 We can also set a size limit on the `emptyDir` `volumes`
 In the next example we bind this `emptyDir` path to the `RAM` using `medium: Memory` option. So it will be here limited to `sizeLimit: 64Mi`.
 If we don't use the option `medium: Memory` (`RAM`-based temporary volume) it will be just using the underlying physical filesystem so `disk` or `ssd` depend on the path indicated and node connected resources made available.
@@ -4647,8 +4649,11 @@ spec:
     emptyDir: {}
 ```
 
-## Units Used For Resource Limits Indication: Base-10, Base-2
-We have two different ways that it is calculated depending on if it is `RAM` (`decimal` base-10) based calculation of `bytes` or `CPU` way (`binary` base-2) based calculations.
+## Kubernetes Units For Calculating `RAM` and `CPU`
+
+### Units Used For Resource Limits Indication: Base-10, Base-2 for RAM (memory)
+We have two different ways that it is calculated depending on if it is `decimal` base-10, based calculation of `bytes`, or `binary` base-2 (more precise), based calculations.
+So here have to understand that to calculate `RAM` (memory) we can use different ways, one being more precise thant the other (base-2 binary more precise (`i`)).
 They both use different units.
 - Decimal units	10	-> 1M = 1,000,000 -> expressed: k, M, G, etc.
 - Binary units	2	1Mi = 1,048,576 -> expressed: Ki, Mi, Gi, etc.
@@ -4683,6 +4688,36 @@ This is already in bytes.
 1 MiB = 1024 × 1024 bytes = 1,048,576 bytes
 ```
 Exactly equals the raw byte value: 128974848
+
+### Unit used for resource calculation `CPU` this time:
+Here we will just use `millicores`:
+- cpu: 500m = 0.5 vCPU -> Half-core
+- cpu: 1 = 1 vCPU -> full 1 core
+**Never use Mi, Gi, M, or G with CPU** like we did for `RAM`
+
+### Example for both
+```yaml
+# CPU Example (1 full CPU core)
+resources:
+  requests:
+    cpu: "1"
+  limits:
+    cpu: "2"
+
+# Memory Example (binary-based)
+resources:
+  requests:
+    memory: "512Mi"
+  limits:
+    memory: "1Gi"
+
+# Ephemeral Storage Example (decimal-based)
+resources:
+  limits:
+    ephemeral-storage: "1G"
+
+```
+
 
 ## Limit Ranges & Resource Quotas
 source: (Doc for limit ranges)[https://kubernetes.io/docs/concepts/policy/limit-range/]
@@ -4807,7 +4842,7 @@ items:
       cpu: "1000"
       memory: "200Gi"
       pods: "10"
-scopeSelector:
+    scopeSelector:
       matchExpressions:
       - operator: In
         scopeName: PriorityClass
@@ -5089,10 +5124,10 @@ Because some runtime use some `cpu` and `memory` and it is not counted by `sched
 
 ### Scenarios
 
-#### Scenario 1:
+#### Scenarios analysis before decision on scenario:
 `cpu` and `memory` units used and how it is calculated:
 RAM -> decimal 10 based -> Decimal units 10 -> 1M = 1,000,000 -> expressed: k, M, G, etc.
-CPU -> decimal 2 based -> Binary units 2 1Mi = 1,048,576 -> expressed: Ki, Mi, Gi, etc.
+RAM -> decimal 2 based -> Binary units 2 1Mi = 1,048,576 -> expressed: Ki, Mi, Gi, etc.
 
 128974848 (raw bytes) This is already in bytes.
 128,974,848 bytes
@@ -5106,9 +5141,123 @@ CPU -> decimal 2 based -> Binary units 2 1Mi = 1,048,576 -> expressed: Ki, Mi, G
 123Mi (123 mebibytes in base 2 binary)
 123Mi = 123 * 1,048,576 = 128,974,848 bytes (1 MiB = 1024 KiB -> 1 KiB = 1024 bytes, So 1 MiB = 1024 × 1024 bytes = 1,048,576 bytes)
 
+CPU: just use milicores `m` of `integers` without any `m` so it will imply full cores.
+
+then here just show normal resource request/limits
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: high-priority
+spec:
+  containers:
+  - name: high-priority
+    image: ubuntu
+    command: ["/bin/sh"]
+    args: ["-c", "while true; do echo hello; sleep 10;done"]
+    resources:
+      requests:
+        memory: "10Gi"
+        cpu: "500m"
+      limits:
+        memory: "10Gi"
+        cpu: "500m"
+    # CPU Example (1 full CPU core)
+    resources:
+      requests:
+        cpu: "1"
+      limits:
+        cpu: "2"
+
+    # Memory Example (binary-based)
+    resources:
+      requests:
+        memory: "512Mi"
+      limits:
+        memory: "1Gi"
+
+    # Ephemeral Storage Example (decimal-based)
+    resources:
+      limits:
+        ephemeral-storage: "1G"
+```
+
+- cat resource_request_limit_1_mormal.yaml 
+can probably work this example to explain step by step what need to be installed and options to put in place `GRUB`,
+`metric-server`, and then run it, find a command that would make the pod use too much resource to be evicted
+and have a policy attached to `namespace` and even a gateway for admission with `limitrange`
+so that we have one huge scenario which will introduce all step by step. `sizeLimit` for `emptyDir` would also be used would also be used.
+`resourceQuota` for `namespace` `limits` and `scope` liked to `pod` which will be part of those `scope` `priorityClassName`.
+So need to think in steps to introduce all step by step...
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test
+  namespace: limited-resources
+spec:
+  containers:
+  - name: reader
+    image: nginx
+    volumeMounts:
+    - name: special-shared-volumes
+      mountPath: /tmp/cache
+    resources:
+      requests:
+        memory: "16Mi"
+        cpu: "250m"
+      limits:
+        memory: "32Mi"
+        cpu: "500m"
+
+  # sidecar container as container which will be having limits in resources for eg.
+  - name: writer
+    image: busybox:1.36.1
+    command: ["/bin/sh"]
+    args: ["-c", "echo 'rigoleto italian restaurant shibuya' > /tmp/cache/which_restaurant.txt && sleep 3600"]
+
+    volumeMounts:
+    - name: special-shared-volumes
+      mountPath: /tmp/cache
+    # maybe add another container using `hugepages` and show how to set it on linus and how to get rid of it
+    # - name: hugepage
+      # mountPath: /hugepages
+
+    # resources mixing `ephemeral-storage` and `memory` and `cpu`
+    resources:
+      # cpu/memory/epheremeral-storate can be set together in request but NO `resquests` for `hugepages`
+      requests:
+        memory: "1Mi"
+        cpu: "500m"
+        ephemeral-storage: "1M"
+      # cpu/memory/ephemeral-storage/hugepages can all be set together in `limits`
+      limits:
+        # memory binary-based
+        memory: "3Mi"
+        # memory deciman-based
+        # memory: "3M"
+        # memmory scientific-based (pure numeric no need to use M/Mi and for templating from other tools or pragramms can be nice)
+        # memory: "3e6"
+        cpu: "1"
+        # Ephemeral Storage Example (decimal-based)
+        ephemeral-storage: "3M"
+        # important: with `hugepages` only `limits` are possible to set and not `requests`
+        #hugepages-2Mi: 100Mi
+
+  volumes:
+  - name: special-shared-volumes
+    emptyDir: {}
+  # `medium` can be used because only one `hugepage` volume is used in this `yaml` otherwise would just use it `volumes` without the `medium` like: `emptyDir: {}`
+  # - name: hugepage
+    # emptyDir:
+      # medium: HugePages
+
+```
+
 
 `hugepage` for better cpu usage and side pod with request/limit as can't be set together. `hugepage` can be set on nodeii custom way at :
 ```bash
+# append to `GRUB_CMDLINE_LINUX`: `default_hugepagesz=2M hugepagesz=2M hugepages=512`
 sudo nano /etc/default/grub
 default_hugepagesz=2M hugepagesz=2M hugepages=512
 # Then update GRUB and reboot:
@@ -5130,6 +5279,7 @@ spec:
   containers:
   - name: app
     image: busybox
+    # this will write 500 block of 1M resulting in a 500Mi(B) file: it is good to use this command so we can test limit storage
     command: ["sh", "-c", "dd if=/dev/zero of=/data/file bs=1M count=500"]
     volumeMounts:
     - mountPath: /data
@@ -5308,7 +5458,194 @@ spec:
 ```
 
 talk about `kind: RuntimeClass` taht can be used to have even more control on how much resource are allocated to container runtime as it is not calculated by `scheduler` if not set. while if set it will be considered for pod `scheduling`. when running 2 pods it is fine but when running 20000 pods with different runtimes, those will consume resoruces that can affect performance and create issues of pods being evicted because OOM killes of CPU starvation so another resource consuming RAM and CPU but not calculated correctly creating issues int he cluster. It is better to have full control and leverage kubernetes native scheduler behaviour in our favor by privideing as much detailed information to it before it decides the repartition of the workload in the cluster.
-_________________________________________________________________
+
+
+## Issues
+
+### `OCI runtime create failed: ... error setting cgroup config for procHooks process: ... cgroup.controllers: no such file or directory`
+
+- when using `ephemeral-storage` need to have an option activated on the `GRUB`, `/etc/default/grub` file with the var `GRUB_CMDLINE_LINUX` need to add `systemd.unified_cgroup_hierarchy=1`: so i have appended it to already existing options: `GRUB_CMDLINE_LINUX="find_preseed=/preseed.cfg auto noprompt priority=critical locale=en_US systemd.unified_cgroup_hierarchy=1"`
+after need to update and reboot:
+```bash
+sudo update-grub
+sudo reboot
+```
+then check:
+```bash
+stat /sys/fs/cgroup/cgroup.controllers
+```
+lesson: 
+  - To make ephemeral-storage requests/limits work on Kubernetes 1.28 + containerd:
+    - Kernel >= 5.2 (you have 6.8)
+    - GRUB must enable cgroup v2 explicitly, with: `systemd.unified_cgroup_hierarchy=1`
+    - `sudo nano /etc/containerd/config.toml` and check that `systemdCgroup` is set to `true`:
+    ```bash
+    # inside /etc/containerd/config.toml
+    [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+      SystemdCgroup = true
+    # restart containerd
+    sudo systemctl restart containerd
+    ```
+    - and check the kernel version `>= 5.8` to be able to use `Cgroup.v2`
+    ```bash
+    uname -r
+    outputs:
+    6.8.0-57-generic
+    ```
+
+### `error during container init: procReady not received, openat2 ... cgroup.controllers: no such file or directory`
+- wehn setting `limits` and `request` if it is too low and even the binary can't startm you will run in `memory` starvation because you provided fewer resoruces than the minimum required. Here `nginx` container has been started with less permitted request than required to start the binary so the pod would never start and gets error.
+- `runc` can't finish setting up `Cgroup` therefore exists.
+
+Solution: 
+- increase the `memory` `requests` and `limits`
+- run a pod discovery meaning create a pod and chech how much resource the container needs by running `k top pod <pod_name>`, then you will see `memory` and `cpu` usage and be able to set it in the `yaml` file, add alsway a buffer of `20%`.
+- You can also set a `LimitRange` in order for you to have control on the minimum resource that are requested and limited by pods containers, so that if it is too low pod won;t be passing the `admission` control thanks to the `LimitRange`
+```yaml
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: default-limits
+  namespace: test
+spec:
+  limits:
+  - default:
+      memory: 64Mi
+      cpu: 100m
+    defaultRequest:
+      memory: 32Mi
+      cpu: 50m
+    type: Container
+```
+- or use Prometheus/Grafana and see how much pod is using and then you will know roughly what are the `requests` and `limits` to set by taking the average high resoruce use and adding `20%` to be sure.
+
+```bash
+k get pods
+Outputs:
+NAME   READY   STATUS    RESTARTS      AGE
+test   1/1     Running   1 (46m ago)   179m
+
+k top pod test
+Outputs:
+NAME   CPU(cores)   MEMORY(bytes)   
+test   0m           13Mi 
+```
+```bash
+k top pod -A
+NAMESPACE            NAME                                                 CPU(cores)   MEMORY(bytes)   
+kube-system          calico-kube-controllers-85578c44bf-xqlmz             5m           56Mi            
+kube-system          calico-node-7m4mc                                    90m          145Mi           
+kube-system          calico-node-8v4pl                                    63m          98Mi            
+kube-system          calico-node-mmh88                                    62m          145Mi           
+kube-system          coredns-5d78c9869d-kpbtn                             3m           28Mi            
+kube-system          coredns-5d78c9869d-l47pn                             3m           41Mi            
+kube-system          etcd-controller.creditizens.net                      49m          78Mi            
+kube-system          kube-apiserver-controller.creditizens.net            125m         317Mi           
+kube-system          kube-controller-manager-controller.creditizens.net   31m          124Mi           
+kube-system          kube-proxy-88h87                                     21m          61Mi            
+kube-system          kube-proxy-bs58j                                     17m          61Mi            
+kube-system          kube-proxy-mwnmk                                     13m          60Mi            
+kube-system          kube-scheduler-controller.creditizens.net            7m           64Mi            
+kube-system          metrics-server-596474b58-hn5tz                       9m           66Mi            
+local-path-storage   local-path-provisioner-6548cc785f-wmv98              1m           46Mi
+```
+
+### `Metrics-server` activation on cluster to be able to run `k top...` command
+
+isntall
+```basg
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+```
+issue here was that the `metrics-server` `pod` in `namespace` `kube-system` intalled wasn't starting but just `running` in `0/1`. So this known issue so need to patch the `deployment` to get it running and then can use th ecommand `k top ...`
+**"metrics-server tries to securely scrape kubelet metrics using HTTPS with valid certificates. But in your kubeadm cluster, kubelet uses self-signed certs, and by default, the metrics-server doesn't trust them."**
+```bash
+kubectl patch deployment metrics-server -n kube-system --type='json' -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
+
+```
+
+Solution here is to patch it so that it ignores those self-signed certs of `kubeadm cluster`
+
+### where are `emptyDir` shared volumes of contaienr located
+- first of all the containers can be checked if running fine using `crictl` the `cli` tool of `containerd`. So first need to check where pod have been scheduled and then `ssh` to the node. and then run `sudo crictl ps -a` to find the container running int he pod and troubleshoot those if any issues.
+- if no issues where is the shared volume path int he file system as i have created one at `/tmp/cache` but aren't seeing it when doing `ssh` to `node1.creditizens.net1` where the `pod` has been scheduled?
+The location is actually in the `kubelet` folder at path like: `/var/lib/kubelet/pods/<pod-UID>/volumes/kubernetes.io~empty-dir/<volume-name>`
+for us:
+```bash
+ls /var/lib/kubelet/pods/<pod-UID>/volumes/kubernetes.io~empty-dir/special-shared-volumes/
+#here is real data on node1.creditizens.net
+sudo ls -la /var/lib/kubelet/pods/9d0501b0-e367-41a4-819b-2fba105c16d7/volumes/kubernetes.io~empty-dir/special-shared-volumes
+total 12
+drwxrwxrwx 2 root root 4096 avril 15 03:43 .
+drwxr-xr-x 3 root root 4096 avril 15 03:43 ..
+-rw-r--r-- 1 root root   36 avril 15 03:43 which_restaurant.txt
+# then
+sudo cat /var/lib/kubelet/pods/9d0501b0-e367-41a4-819b-2fba105c16d7/volumes/kubernetes.io~empty-dir/special-shared-volumes/which_restaurant.txt
+Outputs:
+rigoleto italian restaurant shibuya
+```
+eg. how to get pod UID:
+```bash
+kubectl get pods -n limited-resources test -o jsonpath='{.metadata.uid}'
+outputs:
+9d0501b0-e367-41a4-819b-2fba105c16d7
+# OR displya nice columns
+kubectl get pods -n limited-resources -o custom-columns=PodName:.metadata.name,PodUID:.metadata.uid
+PodName   PodUID
+test      9d0501b0-e367-41a4-819b-2fba105c16d7
+```
+
+solution: here different from when we were using `storageclass` where in dynamic it was created in the `csi` path for the `pv` or to troubleshot `pvc` at `/var/lib/kubelet/plugins/kubernetes.io/csi/pv/<pv-name>/...` or even in static provisioning where the path needed to exist beforehands on the node corresponding to the same path indicated on the container. 
+while here it is in the `kubelet` folder at a certain path for the `emptyDir` to live in and be deleted when pod stops.
+
+
+## Commands helping to put some **stress on the memory** by increasing the size of resources used
+```bash
+# can be used in `yaml` files
+i=0; while true; do echo "$i - writing some data to fill the volume" >> /cache/file.txt; i=$((i+1)); sleep 0.1; done
+```
+```bash
+# can be ran inside a pod by `exec` into it creating straight away a big file (here 10MiB filesize)
+dd if=/dev/zero of=/cache/bigfile bs=1M count=10
+```
+
+## Commands to put **stress on cpu**
+stress CPU usage inside a container and trigger CPU limits, you can use tools like:
+
+- `yes` command (simplest, built-in)
+This will max out one CPU core by continuously printing y.
+```bash
+yes > /dev/null
+```
+
+- `dd` CPU-bound example
+This reads and discards data rapidly — very CPU-intensive.
+```bash
+dd if=/dev/zero of=/dev/null bs=1M
+```
+
+- `sh` loop with math (portable)
+A tight loop that constantly calculates something.
+```bash
+sh -c 'while true; do echo $((13*45)); done'
+```
+
+- Stress test with stress tool
+If image includes stress (like ubuntu, debian, alpine with apk add stress), we can use:
+# `--cpu 2`: spin up 2 CPU workers
+# `--timeout 60`: run for 60 seconds
+```bash
+stress --cpu 2 --timeout 60
+```
+
+- if container doesn't include it, can use an image like:
+```yaml
+image: progrium/stress
+command: ["stress"]
+args: ["--cpu", "2", "--timeout", "60"]
+```
+(excalidraw walkthrough diagram)[https://excalidraw.com/#json=kR1Z7xUGN7pIUZDpRdOMt,TF01Tb_MHbDPCgbrR-JJlA]
+___________________________________________________________
+
 # Next
 - [ ] do those kubernetes concepts:
     - [x] Storage
