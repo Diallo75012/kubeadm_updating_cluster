@@ -5658,7 +5658,7 @@ validatingwebhookconfigurations                admissionregistration.k8s.io/v1  
 
 **x3 resources are needed to have a `validatingAdmissionPolicy` setup:**
 - a `ValidationAdmissionPolicy`: That is the main subset of the policy which enforces a behaviour check or restriction.
-- `parameter resources`: Some resources defined with some expressions constraint or precision in order for the `ValidatingAdmissionPolicy` to know parameter of the `kind:` (ConfigMap, CRD, Pod, etc...) that need to be fulfilled. (optional can also not be set, if so, do not specify `spec.paramKind` in `ValidatingAdmissionPolicy`) 
+- `parameter resources`: Some resources defined with some expressions constraint or precision in order for the `ValidatingAdmissionPolicy` to know parameter of the `kind:` (ConfigMap, CRD, Pod, etc...) that need to be fulfilled. (optional can also not be set, if so, do not specify `spec.paramKind` in `ValidatingAdmissionPolicy`. What is interesting with `parameter resources` is that we can create our custom `yaml` with our custom `apiVersion:` and custon `kind:` and use any custum fields after `metadata:` (which even if custom can be namespaced or not). Then in the `ValidatingAdmissionPolicy` use `paramKind` to reference it and use the `matchExpression` to check against it and in the other hand in `ValidatingAdmissionPolicyBinding` have a `paramRef` and also reference it there.
 - q `ValidatingAdmissionPolicyBinding`: here is the one making the `ValidationAdmissionPolicy` and the `parameter resources` to be linked. Even when we don't have `paramter resources` specified, this `ValidatingAdmissionPolicyBinding` is mandatory and the minimal set up is `ValidatingAdmissionPolicy` with `ValidatingAdmissionPolicyBinding` (and `spec.paramKind` not specified in `ValidatingAdmissionPolicy`)
 
 ## a `ValidatingAdmissionPolicy`
@@ -5673,6 +5673,7 @@ spec:
   # can be set also to `Ignore`. here it check what happens if Kubernetes can't verify this validation expression.
   failurePolicy: Fail
   matchConstraints:
+    # apply `admission policy` only to resource `deployment` when it is `created` and `updated` and it is part of the `v1` API and `apps` API group
     resourceRules:
     - apiGroups:   ["apps"]
       apiVersions: ["v1"]
@@ -5683,6 +5684,7 @@ spec:
   validations:
     - expression: "object.spec.replicas <= 5"
 ```
+Here: `resourceRules` is the "selector" of what kind of object (Deployment, Pod, etc.) and on what kind of action (Create, Update, Delete) the policy must run.
 
 ## a `ValidatingAdmissionPolicyBinding`
 different values that can be taken by `validationActions` in `ValidatingAdmissionPolicyBinding`:
@@ -5706,14 +5708,14 @@ spec:
         environment: test
 ```
 
-## is `validationActions` in `ValidatingAdmissionPolicy` redundant when we have `failurePolicy` in `ValidatingAdmissionPolicy`
+### is `validationActions` in `ValidatingAdmissionPolicy` redundant when we have `failurePolicy` in `ValidatingAdmissionPolicy`
 
 Look like YES but actual it is NOT as they both check different things:
 Role                                                    | Purpose
 failurePolicy (in ValidatingAdmissionPolicy)            | What happens **if the admission check system itself is broken** or unreachable (for example, the expression engine is unavailable, server crashes) — **Should the API server fail or ignore** the check? (meta failure handling)
 validationActions (in ValidatingAdmissionPolicyBinding) | **What** to do **when the expression runs fine but returns FALSE** (meaning the object **failed validation**) — **Should it deny, warn, or audit?** (actual check result handling)
 
-### Examples to understand the workflow (as a bit complicated)
+#### Examples to understand the workflow (as a bit complicated)
 ValidatingAdmissionPolicy defines:
 ```yaml
 validations:
@@ -5733,7 +5735,7 @@ If I create a Deployment in a namespace labeled environment=dev with replicas: 1
 - Engine is working (no crash) → so failurePolicy not triggered.
 - Expression false → validationActions: Deny → Request denied.
 
-### Another Example:
+#### Another Example:
 - .1) User sends object to API Server.
 - .2) Binding: matchResources (selector) checked → Does this policy apply?
     - If yes, proceed.
@@ -5750,14 +5752,90 @@ If I create a Deployment in a namespace labeled environment=dev with replicas: 1
 - `validationActions` = what happens if rule is violated (false).
 - `failurePolicy` = what happens if Kubernetes itself can't even run the check.
 
+**So to resume the understanding:**
+- I apply resoruce to cluster
+- If in the `ValidatingAdmissionPolicyBinding` the selector i not triggered this `admissing policy` won't be enforeced. In the other hands, if it matches the s2lector (True) it will then check the `ValidatingAdmissionPolicy` 'binded' to it and indicated in `policyName`.
+- Then in the `ValidatingAdmissionPolicy` the expression is checked if it is `true` all good `Admission: OK!`, if it is not good `false` (expression condition not respected) it will check the `failurePolicy` indicated and apply it `Fail` (Kubernetes can't validate expression) or `Ignore` (ignore that Kubernetes can't verify because of any issue or just not complying). So this is not yes stoppong anything. it is after.
+- Now when the `failurePolicy` is triggered in the `ValidatingAdmissionPolicy` the `validationActions` of the `ValidatingAdmissionPolicyBinding` will apply `War n` and let it deploy with warning thereofre `admit it: OK! but warning !` OR `Deny` it and stop the deployment of the resource so `Not Admited`. `Audit` if present as works in combinaison of any of `Warn/Deny`, it will also include the event int he API Request events.
 
+## a `paramter resource`
+we use here example from documentation and will comment it out
+custom resource created by admin, `apiVersion:` and `kind:` are all custom
+```yaml
+# fully custom  `apiVersion:` as there is no controller/CRD or check, it has just to be valid `CEL` language
+apiVersion: rules.example.com/v1
+# fully custom  `kind:` as there is no controller/CRD or check, it has just to be valid `CEL` language
+kind: ReplicaLimit
+metadata:
+  name: "replica-limit-test.example.com"
+  # can specify a namespace, if no namespace it will be `cluster-wise`
+  # like `ValidatingAdmissionPolicy/and ValidatingAdmissionPolicyBinding` are cluster-wise`
+  namespace: "default"
+# custom parameter
+maxReplicas: 3
+```
+
+`paramKind` used in `ValidatingAdmissionPolicy` to reference the resource `kind:` we are going to check `matchExpressions` against
+```yaml
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: "replicalimit-policy.example.com"
+spec:
+  failurePolicy: Fail
+  # here is the reference of the resource made available to this `ValidatingAdmissionPolicy`
+  paramKind:
+    apiVersion: rules.example.com/v1
+    kind: ReplicaLimit
+  matchConstraints:
+    resourceRules:
+    - apiGroups:   ["apps"]
+      apiVersions: ["v1"]
+      operations:  ["CREATE", "UPDATE"]
+      resources:   ["deployments"]
+  # now validation here can use `params` keyword to access fields in the `resource referenced in `paramKind`
+  validations:
+    - expression: "object.spec.replicas <= params.maxReplicas"
+      # `reason` need to be a valid one: see doc to see list of those otherwise don't put it and Kubernetes will display default
+      reason: Invalid
+      # `message` can also be used and inside of it you can use `CEL` expressions like `${variable}`, `.size()`, `.startsWith()`, `||`, `&&` (see doc)
+      # message: 
+```
+`paramRef` used in `ValidatingAdmissionPloicyBinding` to tell which resource is made available to check `matchExpression` against in `ValidatingAdmissionPolicy`
+```yaml
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: "replicalimit-binding-test.example.com"
+spec:
+  # this specified to what `ValidatingAdmissionPolicy` this `ValidatingAdmissionPolicyBinding` is binded to
+  policyName: "replicalimit-policy.example.com"
+  # this can be `Deny` if only in the other side (`ValidatingAdmissionPolicy`) the `matchExpressions` are `false` so invalidated `a>3` but `a=2` so not `true`
+  # at this time the `failurePolicy` defined there will be triggered `Ignore` or `Fail` will here be trigger `Deny` as the `failurepolicy` have been touched.
+  # in the other hand if `matchExpressions` of `ValidatingAdmissionPolicy` is fine nothing, no `failurePolicy` triggered so the API request will be validated.
+  validationActions: [Deny]
+  # show here the resource made available to check matchExpressions in `ValidatingAdmissionPolicy` referenced here at key `policyName`
+  paramRef:
+    name: "replica-limit-test.example.com"
+    namespace: "default"
+  # check this first to see if policy can be triggered, if this is `true` will start checks
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        environment: test
+```
+
+**Importnat Notes:**
+- polices won't be created if one references and the other not, meaning if one has `paramRef` the other MUST have matching `paramKind`
+- Multiple `ValidatingAdmissionPolicyBindings` to one `ValidatingAdmissionPolicy` possible. but not the other way around.
+- one `ValidatingAdmissionPolicy` can have multiple `matchConstraints.resourceRules`
 ___________________________________________________________
 
 # Next
 - [ ] do those kubernetes concepts:
     - [x] Storage
     - [x] Backup and Recovery
-    - [ ] Resources Limits
+    - [x] Resources Limits
     - [ ] Admission Policy
     - [ ] Cronjob, Jobs
     - [ ] Damonsets
