@@ -6,6 +6,7 @@ metadata:
   name: meidaimae-controlled-resources3
   namespace: controlled-resources
 spec:
+  #priorityClassName: "low"
   containers:
   - name: meidaimae-reader3
     image: nginx
@@ -13,12 +14,12 @@ spec:
     resources:
       requests:
         memory: "16Mi"
-        #cpu: "500m"
+        cpu: "250m"
         # emptyDir is part of what is called resource `ephemeral_storage` so lets use that to control its size
         ephemeral-storage: "1M"
       limits:
         memory: "32Mi"
-        #cpu: "1"
+        cpu: "500m"
         # `ephemeral-storage` comprise things like `images`, `emptyDir`, `CIS Drivers`...
         ephemeral-storage: "3M"
         # `hugepages` for performance enhancement, default linux size of page are 4KiB
@@ -39,7 +40,7 @@ spec:
     resources:
       requests:
         memory: "1Mi"
-        #cpu: "250m"
+        cpu: "100m"
       limits:
         # memory binary-based notation
         memory: "3Mi"
@@ -47,7 +48,7 @@ spec:
         # memory: "3M"
         # scientific-based, pulerly numeric so good if using scripting templates for code. no need to use 'M/Mi'
         # memory: "3e6"
-        #cpu: "500m"
+        cpu: "250m"
 
     volumeMounts:
     - name: special-shared-volumes3

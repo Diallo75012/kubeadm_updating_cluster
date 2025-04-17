@@ -5013,7 +5013,7 @@ spec:
     requests.nvidia.com/gpu: 4
 ```
 
-(eg.: object-counts.yaml)
+(eg.: object-counts.yaml from doc. but can also put all together in one `ResourceQuota` file)
 ```yaml
 apiVersion: v1
 kind: ResourceQuota
@@ -5467,7 +5467,7 @@ talk about `kind: RuntimeClass` taht can be used to have even more control on ho
 - when using `ephemeral-storage` need to have an option activated on the `GRUB`, `/etc/default/grub` file with the var `GRUB_CMDLINE_LINUX` need to add `systemd.unified_cgroup_hierarchy=1`: so i have appended it to already existing options: `GRUB_CMDLINE_LINUX="find_preseed=/preseed.cfg auto noprompt priority=critical locale=en_US systemd.unified_cgroup_hierarchy=1"`
 after need to update and reboot:
 ```bash
-sudo update-grub
+sudo update-:grub
 sudo reboot
 ```
 then check:
@@ -5644,6 +5644,113 @@ command: ["stress"]
 args: ["--cpu", "2", "--timeout", "60"]
 ```
 (excalidraw walkthrough diagram)[https://excalidraw.com/#json=kR1Z7xUGN7pIUZDpRdOMt,TF01Tb_MHbDPCgbrR-JJlA]
+
+
+___________________________________________________________
+
+# Validation Admission Policy
+Source: (doc admission policy)[https://kubernetes.io/docs/reference/access-authn-authz/validating-admission-policy/]
+```bash
+k api-resources | grep "validating"
+validatingwebhookconfigurations                admissionregistration.k8s.io/v1        false        ValidatingWebhookConfiguration
+```
+"`Validating admission policies` offer a declarative, **in-process alternative** to `validating admission webhooks`"
+
+**x3 resources are needed to have a `validatingAdmissionPolicy` setup:**
+- a `ValidationAdmissionPolicy`: That is the main subset of the policy which enforces a behaviour check or restriction.
+- `parameter resources`: Some resources defined with some expressions constraint or precision in order for the `ValidatingAdmissionPolicy` to know parameter of the `kind:` (ConfigMap, CRD, Pod, etc...) that need to be fulfilled. (optional can also not be set, if so, do not specify `spec.paramKind` in `ValidatingAdmissionPolicy`) 
+- q `ValidatingAdmissionPolicyBinding`: here is the one making the `ValidationAdmissionPolicy` and the `parameter resources` to be linked. Even when we don't have `paramter resources` specified, this `ValidatingAdmissionPolicyBinding` is mandatory and the minimal set up is `ValidatingAdmissionPolicy` with `ValidatingAdmissionPolicyBinding` (and `spec.paramKind` not specified in `ValidatingAdmissionPolicy`)
+
+## a `ValidatingAdmissionPolicy`
+(eg. from kubernetes doc.)
+```yaml
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: "demo-policy.example.com"
+spec:
+  # if not set would default to `Fail`, if set and not to `Fail` the `validations` would be ignored
+  # can be set also to `Ignore`. here it check what happens if Kubernetes can't verify this validation expression.
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups:   ["apps"]
+      apiVersions: ["v1"]
+      operations:  ["CREATE", "UPDATE"]
+      resources:   ["deployments"]
+  # if `true` all good, if `false` so different would enforce the above option `failurePolicy`
+  # and `Fail` here as this is what it is set. (if other can be ignored as well)
+  validations:
+    - expression: "object.spec.replicas <= 5"
+```
+
+## a `ValidatingAdmissionPolicyBinding`
+different values that can be taken by `validationActions` in `ValidatingAdmissionPolicyBinding`:
+- `Deny`: Validation failure results in a denied request. Can be used with `Audit`: [`Deny`, `Audit`] , can't be used with `Warn` as opposite effects.
+- `Warn`: Validation failure is reported to the request client as a warning. Can be used with `Audit`: [`Warn`, `Audit`], can't be used with `Deny` as opposite.
+- `Audit`: Validation failure is included in the audit event for the API request. can be used with either of both `Deny` and `Warn` BUT NOT alone.
+**So here it will also be enforced depending on the other resource it is binded to the `validatingAdmissionPolicy`'s `failurePolicy`**
+```yaml
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: "demo-binding-test.example.com"
+spec:
+  # linking to `ValidatingAdmissionPolicy`
+  policyName: "demo-policy.example.com"
+  # here enforced check, what happends when the `ValidatingAdmissionPolicy` referenced in `policyName` return `false` (expression not validated)
+  validationActions: [Deny]
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        environment: test
+```
+
+## is `validationActions` in `ValidatingAdmissionPolicy` redundant when we have `failurePolicy` in `ValidatingAdmissionPolicy`
+
+Look like YES but actual it is NOT as they both check different things:
+Role                                                    | Purpose
+failurePolicy (in ValidatingAdmissionPolicy)            | What happens **if the admission check system itself is broken** or unreachable (for example, the expression engine is unavailable, server crashes) — **Should the API server fail or ignore** the check? (meta failure handling)
+validationActions (in ValidatingAdmissionPolicyBinding) | **What** to do **when the expression runs fine but returns FALSE** (meaning the object **failed validation**) — **Should it deny, warn, or audit?** (actual check result handling)
+
+### Examples to understand the workflow (as a bit complicated)
+ValidatingAdmissionPolicy defines:
+```yaml
+validations:
+  - expression: "object.spec.replicas <= 5"
+failurePolicy: Ignore
+```
+ValidatingAdmissionPolicyBinding defines:
+```yaml
+validationActions: [Deny]
+namespaceSelector:
+  matchLabels:
+    environment: dev
+```
+If I create a Deployment in a namespace labeled environment=dev with replicas: 10, here is what happens:
+- Selector matches → ValidationPolicy triggered
+- Expression evaluated → returns false (because 10 > 5)
+- Engine is working (no crash) → so failurePolicy not triggered.
+- Expression false → validationActions: Deny → Request denied.
+
+### Another Example:
+- .1) User sends object to API Server.
+- .2) Binding: matchResources (selector) checked → Does this policy apply?
+    - If yes, proceed.
+    - If no, nothing else happens.
+- .3) Policy: ValidatingAdmissionPolicy applied → Expression evaluated.
+- .4) If evaluation:
+    - Crashes → failurePolicy (Fail or Ignore) is checked.
+    - Succeeds:
+      - If expression true → allow.
+      - If expression false → validationActions (Deny / Warn / Audit) decides.
+
+
+**NOTES:**
+- `validationActions` = what happens if rule is violated (false).
+- `failurePolicy` = what happens if Kubernetes itself can't even run the check.
+
+
 ___________________________________________________________
 
 # Next

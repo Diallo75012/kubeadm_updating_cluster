@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: meidaime-resource-quota
+  namespace: controlled-resources
+spec:
+  # this is for the full namespace
+  hard:
+    #requests.cpu:
+    #requests.memory:
+    #we are going to focus on those here
+    limits.cpu: "1"
+    pods: "3"
+    #limits.memory:
+    #configmaps:
+    #persistentvolumeclaim:
+    #secrets:
+    #services:
+    #...etc...
+
+  # can also have several `ResourceQuota` with different `PriorityClass`
+  # and get pod to be affected to those pod would use `priotityClassName` to reference it
+  # scopeSelector:
+    # matchExpressions:
+      # - operator: In
+        # scopeName: PriorityClass
+        # values: ["low"]
