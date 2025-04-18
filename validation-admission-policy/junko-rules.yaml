@@ -1,0 +1,13 @@
+# fully custom  `apiVersion:` as there is no controller/CRD or check, it has just to be valid `CEL` language
+apiVersion: mister.w.rules/v1
+# fully custom  `kind:` as there is no controller/CRD or check, it has just to be valid `CEL` language
+kind: VolumeNaruto
+metadata:
+  name: "watch.naruto.mister.w.com"
+  # can specify a namespace, if no namespace it will be `cluster-wise`
+  # like `ValidatingAdmissionPolicy/and ValidatingAdmissionPolicyBinding` are cluster-wise`
+  namespace: "mangakissa-zone"
+# custom parameters
+replicasFriends: 3
+soundRules: "naruto no sound"
+location: "shibuya"

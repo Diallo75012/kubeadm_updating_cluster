@@ -5782,6 +5782,8 @@ kind: ValidatingAdmissionPolicy
 metadata:
   name: "replicalimit-policy.example.com"
 spec:
+  # this is evaluated only if the expression match could not be evaluated by kubernetes for any reason syntaxe error or other...
+  # otherwise it is the `ValidatingAdmissionPolicyBinding` `validationActions` that is normally triggering the decision, `Deny` or `Warm` or all good if the `match expression` positively evaluated
   failurePolicy: Fail
   # here is the reference of the resource made available to this `ValidatingAdmissionPolicy`
   paramKind:
@@ -5810,9 +5812,7 @@ metadata:
 spec:
   # this specified to what `ValidatingAdmissionPolicy` this `ValidatingAdmissionPolicyBinding` is binded to
   policyName: "replicalimit-policy.example.com"
-  # this can be `Deny` if only in the other side (`ValidatingAdmissionPolicy`) the `matchExpressions` are `false` so invalidated `a>3` but `a=2` so not `true`
-  # at this time the `failurePolicy` defined there will be triggered `Ignore` or `Fail` will here be trigger `Deny` as the `failurepolicy` have been touched.
-  # in the other hand if `matchExpressions` of `ValidatingAdmissionPolicy` is fine nothing, no `failurePolicy` triggered so the API request will be validated.
+  # This would be actioned if the `validation` `match expression` is `false` so a>9 is a=2 so false. But if this `match expression` evaluation fail at kubernetes level, so like `missing parameter`, `syntaxe error` or other, then the `failurePolicy` is here as backup to make it `Fail` or `Ignore` it.
   validationActions: [Deny]
   # show here the resource made available to check matchExpressions in `ValidatingAdmissionPolicy` referenced here at key `policyName`
   paramRef:
@@ -5827,8 +5827,14 @@ spec:
 
 **Importnat Notes:**
 - polices won't be created if one references and the other not, meaning if one has `paramRef` the other MUST have matching `paramKind`
-- Multiple `ValidatingAdmissionPolicyBindings` to one `ValidatingAdmissionPolicy` possible. but not the other way around.
+- Multiple `ValidatingAdmissionPolicyBindings` to one `ValidatingAdmissionPolicy` possible. but not the other way around. But at the end only one would `matchExpressions`
 - one `ValidatingAdmissionPolicy` can have multiple `matchConstraints.resourceRules`
+
+## Scenario:
+need to activate featuregate, CRDs in `kube-apiserver.yaml`: `--feature-gates=ValidatingAdmissionPolicy=true,ValidatingAdmissionPolicyStatus=true`
+`kube-apiserver` will pickup the change and restart to activate it.
+in order to use custom resource need to create `CRD's` defining this new resource so that we can use it in kubernetes and also we need to set `RBAC` for Kubernetes to be able to have read access to those resources.
+see (CRD's Doc)[https://kubernetes.io/docs/tasks/extend-kubernetes/custom-resources/custom-resource-definitions]
 ___________________________________________________________
 
 # Next

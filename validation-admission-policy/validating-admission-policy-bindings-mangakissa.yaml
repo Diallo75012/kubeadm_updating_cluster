@@ -1,0 +1,17 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: "volume-naruto-policy-binding.creditizens.com"
+spec:
+  # this specified to what `ValidatingAdmissionPolicy` this `ValidatingAdmissionPolicyBinding` is binded to
+  policyName: "volume-naruto-policy-binding.creditizens.com"
+  # This would be actioned if the `validation` `match expression` is `false` so a>9 is a=2 so false. But if this `match expression` evaluation fail at kubernetes level, so like `missing parameter`, `syntaxe error` or other, then the `failurePolicy` is here as backup to make it `Fail` or `Ignore` it.
+  validationActions: [Deny]
+  # validationActions: [Warn, Audit]
+  # show here the resource made available to check matchExpressions in `ValidatingAdmissionPolicy` referenced here at key `policyName`
+  # check this first to see if policy can be triggered, if this is `true` will start checks
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        location: shibuya-level-5
+        # location: omotesando-level-2

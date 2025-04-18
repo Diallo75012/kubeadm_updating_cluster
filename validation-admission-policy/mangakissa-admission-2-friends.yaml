@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: mangakissa-admission-friends
+  name: mangakissa-admission-2-friends
+  namespace: mangakissa-zone
+  annotations:
+    creditizens.vip/friends: "naruto no sound"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: mangakissa-admission-friends
+  template:
+    metadata:
+      labels:
+        app: mangakissa-admission-friends
+    spec:
+      containers:
+      - image: nginx
+        name: nginx

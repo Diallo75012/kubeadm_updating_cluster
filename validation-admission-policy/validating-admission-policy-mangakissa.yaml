@@ -1,0 +1,25 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: "volume-naruto-policy.creditizens.com"
+spec:
+  # this is evaluated only if the expression match could not be evaluated by kubernetes for any reason syntaxe error or other...
+  # otherwise it is the `ValidatingAdmissionPolicyBinding` `validationActions` that is normally triggering the decision, `Deny` or `Warm` or all good if the `match expression` positively evaluated
+  failurePolicy: Fail
+  # here is the reference of the resource made available to this `ValidatingAdmissionPolicy`
+  matchConstraints:
+    resourceRules:
+    - apiGroups:   ["apps"]
+      apiVersions: ["v1"]
+      operations:  ["CREATE", "UPDATE"]
+      resources:   ["deployments"]
+  # now validation here can use `params` keyword to access fields in the `resource referenced in `paramKind`
+  validations:
+    - expression: "object.spec.replicas <= 2"
+    # - expression: "object.spec.replicas <= params.replicasFriends"
+      # `reason` need to be a valid one: see doc to see list of those otherwise don't put it and Kubernetes will display default
+      reason: Invalid
+      # `message` can also be used and inside of it you can use `CEL` expressions like `${variable}`, `.size()`, `.startsWith()`, `||`, `&&` (see doc)
+      # message:
+    # here we expect it to be equal to `no sound naruto`
+    # - expression: "object.metadata.annotations.creditizens.vip/friends == params.soundRules"
