@@ -1,0 +1,63 @@
+apiVersion: kubeadm.k8s.io/v1beta3
+bootstrapTokens:
+- groups:
+  - system:bootstrappers:kubeadm:default-node-token
+  token: abcdef.0123456789abcdef
+  ttl: 24h0m0s
+  usages:
+  - signing
+  - authentication
+kind: InitConfiguration
+localAPIEndpoint:
+  # need to put your controller node ip here `ip a` and get the `inet` interface ip
+  advertiseAddress: 192.168.186.146
+  bindPort: 6443
+nodeRegistration:
+  criSocket: unix:///var/run/containerd/containerd.sock
+  imagePullPolicy: IfNotPresent
+  # need to update to the controller node DNS name
+  name: controller.creditizens.net
+  taints: null
+  # activate feature gate for kubelet it will override so you need to specify the ones you have already there otherwise it is going to get rid of those
+  # but as we are using `kind: `kubeletConfiguration` down there , we don't need this option here which is just working on env var instead full clean update
+  kubeletExtraArgs:
+    feature-gates: "SidecarContainers=true,ValidatingAdmissionPolicy=true"
+---
+apiServer:
+  timeoutForControlPlane: 4m0s
+  # activate feature gate for apiserver
+  extraArgs:
+    feature-gates: "SidecarContainers=true,ValidatingAdmissionPolicy=true"
+    runtime-config: "admissionregistration.k8s.io/v1beta1=true"
+apiVersion: kubeadm.k8s.io/v1beta3
+certificatesDir: /etc/kubernetes/pki
+clusterName: kubernetes
+controllerManager:
+  # activate feature gate for controller manager
+  extraArgs:
+    feature-gates: "SidecarContainers=true,ValidatingAdmissionPolicy=true"
+dns: {}
+etcd:
+  local:
+    dataDir: /var/lib/etcd
+imageRepository: registry.k8s.io
+kind: ClusterConfiguration
+# make sure this version matches to your cluster version
+kubernetesVersion: 1.29.15
+networking:
+  dnsDomain: cluster.local
+  serviceSubnet: 10.96.0.0/12
+scheduler:
+  # activate feature gate for scheduler
+  extraArgs:
+    feature-gates: "SidecarContainers=true,ValidatingAdmissionPolicy=true"
+#---
+# when using this it will update `/var/lib/kubelet/config.yaml`
+# so no need up there to add:
+#  kubeletExtraArgs:
+#     feature-gates: ....
+#apiVersion: kubelet.config.k8s.io/v1beta1
+#kind: KubeletConfiguration
+#featureGates:
+#  SidecarContainers: true
+#  ValidatingAdmissionPolicy: true

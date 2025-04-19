@@ -1,4 +1,5 @@
-apiVersion: admissionregistration.k8s.io/v1
+# source: https://v1-29.docs.kubernetes.io/docs/reference/access-authn-authz/validating-admission-policy/#before-you-begin
+apiVersion: admissionregistration.k8s.io/v1beta1
 kind: ValidatingAdmissionPolicy
 metadata:
   name: "volume-naruto-policy.creditizens.com"

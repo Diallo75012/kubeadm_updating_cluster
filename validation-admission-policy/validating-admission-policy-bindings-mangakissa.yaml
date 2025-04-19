@@ -1,10 +1,11 @@
-apiVersion: admissionregistration.k8s.io/v1
+# source : https://v1-29.docs.kubernetes.io/docs/reference/access-authn-authz/validating-admission-policy/#before-you-begin
+apiVersion: admissionregistration.k8s.io/v1beta1
 kind: ValidatingAdmissionPolicyBinding
 metadata:
   name: "volume-naruto-policy-binding.creditizens.com"
 spec:
   # this specified to what `ValidatingAdmissionPolicy` this `ValidatingAdmissionPolicyBinding` is binded to
-  policyName: "volume-naruto-policy-binding.creditizens.com"
+  policyName: "volume-naruto-policy.creditizens.com"
   # This would be actioned if the `validation` `match expression` is `false` so a>9 is a=2 so false. But if this `match expression` evaluation fail at kubernetes level, so like `missing parameter`, `syntaxe error` or other, then the `failurePolicy` is here as backup to make it `Fail` or `Ignore` it.
   validationActions: [Deny]
   # validationActions: [Warn, Audit]
