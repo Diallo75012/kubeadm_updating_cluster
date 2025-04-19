@@ -1,9 +1,14 @@
-!#/bin/sh
+#!/bin/sh
 
+
+# has to be `cordon` and `drain` (drain with --ignore-daemonsets and --delete-emptydir-data options)
 sudo apt update && sudo apt install -y curl apt-transport-https
 
-curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | sudo gpg --dearmor -o /usr/share/keyrings/kubernetes-archive-keyring.gpg
+#curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | sudo gpg --dearmor -o /usr/share/keyrings/kubernetes-archive-keyring.gpg
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.29/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
 
+
+# echo "deb [signed-by=/usr/share/keyrings/kubernetes-archive-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /" | sudo tee /etc/apt/sources.list.d/kubernetes.list
 echo "deb [signed-by=/usr/share/keyrings/kubernetes-archive-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /" | sudo tee /etc/apt/sources.list.d/kubernetes.list
 sudo apt update -y
 
@@ -29,7 +34,9 @@ sudo apt-cache madison kubelet
 sudo apt-cache madison kubectl
 
 sudo apt-mark unhold kubeadm kubectl kubelet
-sudo apt install kubeadm=1.28.15-1.1 kubectl=1.28.15-1.1 kubelet=1.28.15-1.1 -y
+# sudo apt install kubeadm=1.28.15-1.1 kubectl=1.28.15-1.1 kubelet=1.28.15-1.1 -y
+sudo apt install kubeadm=1.29.15-1.1 kubectl=1.29.15-1.1 kubelet=1.29.15-1.1 -y
+
 sudo apt update
 
 containerd --version

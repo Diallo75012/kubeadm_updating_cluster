@@ -1,18 +1,26 @@
-# source : https://v1-29.docs.kubernetes.io/docs/reference/access-authn-authz/validating-admission-policy/#before-you-begin
 apiVersion: admissionregistration.k8s.io/v1beta1
 kind: ValidatingAdmissionPolicyBinding
 metadata:
   name: "volume-naruto-policy-binding.creditizens.com"
 spec:
-  # this specified to what `ValidatingAdmissionPolicy` this `ValidatingAdmissionPolicyBinding` is binded to
+  # this field is referencing the `ValidatingAdmissionPolicy`: one policy to one binding
   policyName: "volume-naruto-policy.creditizens.com"
-  # This would be actioned if the `validation` `match expression` is `false` so a>9 is a=2 so false. But if this `match expression` evaluation fail at kubernetes level, so like `missing parameter`, `syntaxe error` or other, then the `failurePolicy` is here as backup to make it `Fail` or `Ignore` it.
-  validationActions: [Deny]
-  # validationActions: [Warn, Audit]
-  # show here the resource made available to check matchExpressions in `ValidatingAdmissionPolicy` referenced here at key `policyName`
-  # check this first to see if policy can be triggered, if this is `true` will start checks
+  # this would be actioned if the `expression` in the conterpart admission policy can be evaluated by Kubernates
+  # actions can be `Deny`(APIRequest rejected) , `Warn`(APIRequest can pass with a warning),
+  # `Deny + Audit` (Rejected with event written), `Warn + Audit` (Can Pass with event written), `Audit` can't be used alone
+  validationActions: ["Deny"]
+  # here the resource made available to check the expression in `ValidatingAdmissionPolicy` conterpart need to be matching this selector
+  # so not all deployments will be checked, only the ones in any namespace having the label `location=shibuya-level-5`
+  # therefore, the is what is checked first and only when this is satisfied the Admission policy check starts to be triggered and pass check those rules...
+  # now we are providing the reference of the config file that is going to be used as reference in the `validations.expression`
+  paramRef:
+    name: "watch.naruto.mister.w.com"
+    namespace: "mangakissa-zone"
+    # if the external resource reference is not there anymore it will deny any APIRequest
+    # can be `Allow` or `Deny`
+    parameterNotFoundAction: "Deny"
   matchResources:
     namespaceSelector:
       matchLabels:
         location: shibuya-level-5
-        # location: omotesando-level-2
+        # location: ometesando-level-2

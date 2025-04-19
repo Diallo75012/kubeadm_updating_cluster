@@ -1,13 +1,67 @@
-# fully custom  `apiVersion:` as there is no controller/CRD or check, it has just to be valid `CEL` language
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  # must be spec.names.plural+"."+spec.group
+  name: mangakissa-zones.mister.w.rules
+spec:
+  # +spec.group
+  group: mister.w.rules
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            replicasFriends:
+              type: integer
+            soundRules:
+              type: string
+            locationArea:
+              type: string
+  scope: Namespaced
+  names:
+    # spec.names.plural+
+    plural: mangakissa-zones
+    singular: mangakissa-zone
+    kind: VolumeNaruto
+
+---
+# fully custom `apiVersion` as there will be checks so we need to create CRDs, it just has to be valid `CEL` language
 apiVersion: mister.w.rules/v1
-# fully custom  `kind:` as there is no controller/CRD or check, it has just to be valid `CEL` language
+# fully custom `kind` as there will be checks so we need to create CRDs, it just has to be valid `CEL` language
 kind: VolumeNaruto
 metadata:
   name: "watch.naruto.mister.w.com"
-  # can specify a namespace, if no namespace it will be `cluster-wise`
-  # like `ValidatingAdmissionPolicy/and ValidatingAdmissionPolicyBinding` are cluster-wise`
+  # can specify a namespace, if no namespace it will de `cluster-wise`
+  # as `ValidatingAdmissionPolicy/Binding` are `cluster-wise`
   namespace: "mangakissa-zone"
-# custom parameters
+# custom parameters that we can check on using the `expression` check mechanism
 replicasFriends: 3
 soundRules: "naruto no sound"
-location: "shibuya"
+locationArea: "shibuya"
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: mangakissa-custom-resource-reader
+rules:
+- apiGroups: ["mister.w.rules"]
+  resources: ["mangakissa-zones"]
+  verbs: ["get", "watch", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: mangakissa-custom-resource-reader-binding
+subjects:
+- kind: Group
+  name: system:authenticated
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: mangakissa-custom-resource-reader
+  apiGroup: rbac.authorization.k8s.io
+

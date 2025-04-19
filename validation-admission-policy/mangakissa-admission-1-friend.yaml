@@ -2,18 +2,18 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   labels:
-    app: mangakissa-admission-friends
-  name: mangakissa-admission-1-friends
+    app: mangakissa-admission-friend
+  name: mangakissa-admission-1-friend
   namespace: mangakissa-zone
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: mangakissa-admission-friends
+      app: mangakissa-admission-friend
   template:
     metadata:
       labels:
-        app: mangakissa-admission-friends
+        app: mangakissa-admission-friend
     spec:
       containers:
       - image: nginx

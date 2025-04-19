@@ -1,26 +1,33 @@
-# source: https://v1-29.docs.kubernetes.io/docs/reference/access-authn-authz/validating-admission-policy/#before-you-begin
 apiVersion: admissionregistration.k8s.io/v1beta1
 kind: ValidatingAdmissionPolicy
 metadata:
   name: "volume-naruto-policy.creditizens.com"
 spec:
-  # this is evaluated only if the expression match could not be evaluated by kubernetes for any reason syntaxe error or other...
-  # otherwise it is the `ValidatingAdmissionPolicyBinding` `validationActions` that is normally triggering the decision, `Deny` or `Warm` or all good if the `match expression` positively evaluated
+  # this is evaluated only if `expression` down there couldn't be evaluated
+  # therefore any syntaxe error, or kubernetes can't evaluate it will come here and check the `failurePolicy`
+  # can be `Fail` or `Ignore`, if not indicated, default to `Ignore`
   failurePolicy: Fail
-  # here is the reference of the resource made available to this `ValidatingAdmissionPolicy`
+  # here is the reference of the resource made available to this policy to check on
   matchConstraints:
     resourceRules:
-    - apiGroups:   ["apps"]
+    - apiGroups: ["apps"]
       apiVersions: ["v1"]
-      operations:  ["CREATE", "UPDATE"]
-      resources:   ["deployments"]
-  # now validation here can use `params` keyword to access fields in the `resource referenced in `paramKind`
+      operations: ["CREATE", "UPDATE"]
+      resources: ["deployments"]
+  # now validation here can use an exprssion to check if condition is satisfied or not
+  # when these `validations` can be evaluated by Kubernetes `failurePolicy` up there is not triggered,
+  # it is another file that we are going to create having a `validationActions` that will decide what to do
+  # is the `User` APIRequest to `CREATE` or `UPDATE` the `deployments` good to go or not
+  paramKind:
+    apiVersion: mister.w.rules/v1
+    kind: VolumeNaruto
   validations:
-    - expression: "object.spec.replicas <= 2"
-    # - expression: "object.spec.replicas <= params.replicasFriends"
-      # `reason` need to be a valid one: see doc to see list of those otherwise don't put it and Kubernetes will display default
-      reason: Invalid
-      # `message` can also be used and inside of it you can use `CEL` expressions like `${variable}`, `.size()`, `.startsWith()`, `||`, `&&` (see doc)
-      # message:
-    # here we expect it to be equal to `no sound naruto`
-    # - expression: "object.metadata.annotations.creditizens.vip/friends == params.soundRules"
+    # expression using `CEL` language so comprise any operation like `.contains()`, `&&`, `==` ..etc.. see doc...
+    #- expression: "object.spec.replicas <= object.spec.inventedfield"
+      # in the doc you can specify some limited reasons otherwise put nothing and it will default to kubernetes ones
+      #reason: Invalid
+      # we are not going to use, but a message could also be entered, a text that you want this can be custom and also accepts arguments using `$(ARGUMENT)`
+      # messages: ...
+    # so keyword `object` is used to reference the resource created by user fields concerned in this policy
+    # the keyword `params` is used to reference the field used in our custom `CEL` compliant resource
+    - expression: "object.metadata.annotations['creditizens-vip-friends'].contains(params.soundRules)"

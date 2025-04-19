@@ -5831,18 +5831,216 @@ spec:
 - one `ValidatingAdmissionPolicy` can have multiple `matchConstraints.resourceRules`
 
 ## Scenario:
-need to activate featuregate, CRDs in `kube-apiserver.yaml`: `--feature-gates=ValidatingAdmissionPolicy=true,ValidatingAdmissionPolicyStatus=true`
+need to activate featuregate, CRDs in `kube-apiserver.yaml`: `--feature-gates=ValidatingAdmissionPolicy=true`
 `kube-apiserver` will pickup the change and restart to activate it.
 in order to use custom resource need to create `CRD's` defining this new resource so that we can use it in kubernetes and also we need to set `RBAC` for Kubernetes to be able to have read access to those resources.
 see (CRD's Doc)[https://kubernetes.io/docs/tasks/extend-kubernetes/custom-resources/custom-resource-definitions]
-___________________________________________________________
 
+### Issues
+tried to add feature gate in kubernetes v1.28.15 using same way i did with `SidecarContainer=true` in custom config files customed from boiler plate `kubeadm config print init-defaults > <my custom yaml file>`, updated the controller node ip address and changed the name of the node to the DNS name of the controller node `controller.creditizens.net` and added the feature gates `ValidatingAdmissionPolicy` with the sidecontainer one.
+but when used `sudo kubeadm upgrade apply v1.28.15 --config <my cusotm yaml config file>` i got an error even after upgrate to `v1.29.15` same error.
+```bash
+[upgrade/apply] FATAL: couldn't upgrade control plane. kubeadm has tried to recover everything into the earlier state. Errors faced: failed to obtain static Pod hash fo
+r component kube-apiserver on Node controller.creditizens.net: Get "https://controller.creditizens.net:6443/api/v1/namespaces/kube-system/pods/kube-apiserver-controller
+.creditizens.net?timeout=10s": dial tcp 192.168.186.146:6443: connect: connection refused
+To see the stack trace of this error execute with --v=5 or higher
+```
+- couldn't deploy `ValidatingAdmissionPolicyBinding` and `ValidatingAdmissionPolicy`, error message: `ensure CRD's are intalled` was the error when `k apply -f <validatingadmissionpolicy custom yaml file>`
+  So here we need to activate the `--feature-gates` in `kube-apiserver.yaml`: `ValidatingAdmissionPolicy=true` 
+  i had to upgrade to version v1.29.15 as it is easier to setup this feature gate as it is already there by default but need just to add some line in th ekubernetes yaml files.
+  Then, I just added in `kube-apiserver.yaml`
+```bash
+    - --feature-gates=SidecarContainers=true,ValidatingAdmissionPolicy=true
+    - --runtime-config=admissionregistration.k8s.io/v1beta1=true
+```
+  and in /var/lib/kubelet/config.yaml
+```bash
+featureGates:
+  SidecarContainers: true
+  ValidatingAdmissionPolicy: true
+```
+  then just reloaded daemon and restarted kubelet
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart kubelet
+```
+And then applied my custom validating admission policy files and policy was enforced , worked fine. now will play with it to make a custom example 
+
+## full scenario used with creation of CRD and RBAC for our custom resource
+- `CRD` creation, custom `resource API creation`, `RBAC` roles and binding for kubernetes to be able to read it `system:authentication`
+(cat junko-rules.yaml)
+```yaml
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  # must be spec.names.plural+"."+spec.group
+  name: mangakissa-zones.mister.w.rules
+spec:
+  # +spec.group
+  group: mister.w.rules
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            replicasFriends:
+              type: integer
+            soundRules:
+              type: string
+            locationArea:
+              type: string
+  scope: Namespaced
+  names:
+    # spec.names.plural+
+    plural: mangakissa-zones
+    singular: mangakissa-zone
+    kind: VolumeNaruto
+
+---
+# fully custom `apiVersion` as there will be checks so we need to create CRDs, it just has to be valid `CEL` language
+apiVersion: mister.w.rules/v1
+# fully custom `kind` as there will be checks so we need to create CRDs, it just has to be valid `CEL` language
+kind: VolumeNaruto
+metadata:
+  name: "watch.naruto.mister.w.com"
+  # can specify a namespace, if no namespace it will de `cluster-wise`
+  # as `ValidatingAdmissionPolicy/Binding` are `cluster-wise`
+  namespace: "mangakissa-zone"
+# custom parameters that we can check on using the `expression` check mechanism
+replicasFriends: 3
+soundRules: "naruto no sound"
+locationArea: "shibuya"
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: mangakissa-custom-resource-reader
+rules:
+- apiGroups: ["mister.w.rules"]
+  resources: ["mangakissa-zones"]
+  verbs: ["get", "watch", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: mangakissa-custom-resource-reader-binding
+subjects:
+- kind: Group
+  name: system:authenticated
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: mangakissa-custom-resource-reader
+  apiGroup: rbac.authorization.k8s.io
+```
+
+- `ValidatingAdmissionPolicy`
+(cat validating-admission-policy-mangakissa.yaml)
+```yaml
+apiVersion: admissionregistration.k8s.io/v1beta1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: "volume-naruto-policy.creditizens.com"
+spec:
+  # this is evaluated only if `expression` down there couldn't be evaluated
+  # therefore any syntaxe error, or kubernetes can't evaluate it will come here and check the `failurePolicy`
+  # can be `Fail` or `Ignore`, if not indicated, default to `Ignore`
+  failurePolicy: Fail
+  # here is the reference of the resource made available to this policy to check on
+  matchConstraints:
+    resourceRules:
+    - apiGroups: ["apps"]
+      apiVersions: ["v1"]
+      operations: ["CREATE", "UPDATE"]
+      resources: ["deployments"]
+  # now validation here can use an exprssion to check if condition is satisfied or not
+  # when these `validations` can be evaluated by Kubernetes `failurePolicy` up there is not triggered,
+  # it is another file that we are going to create having a `validationActions` that will decide what to do
+  # is the `User` APIRequest to `CREATE` or `UPDATE` the `deployments` good to go or not
+  paramKind:
+    apiVersion: mister.w.rules/v1
+    kind: VolumeNaruto
+  validations:
+    # expression using `CEL` language so comprise any operation like `.contains()`, `&&`, `==` ..etc.. see doc...
+    #- expression: "object.spec.replicas <= object.spec.inventedfield"
+      # in the doc you can specify some limited reasons otherwise put nothing and it will default to kubernetes ones
+      #reason: Invalid
+      # we are not going to use, but a message could also be entered, a text that you want this can be custom and also accepts arguments using `$(ARGUMENT)`
+      # messages: ...
+    # so keyword `object` is used to reference the resource created by user fields concerned in this policy
+    # the keyword `params` is used to reference the field used in our custom `CEL` compliant resource
+    - expression: "object.metadata.annotations['creditizens-vip-friends'].contains(params.soundRules)"
+```
+
+- `ValidatingAdmissionPolicyBinding`
+(cat validating-admission-policy-bindings-mangakissa.yaml )
+```yaml
+apiVersion: admissionregistration.k8s.io/v1beta1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: "volume-naruto-policy-binding.creditizens.com"
+spec:
+  # this field is referencing the `ValidatingAdmissionPolicy`: one policy to one binding
+  policyName: "volume-naruto-policy.creditizens.com"
+  # this would be actioned if the `expression` in the conterpart admission policy can be evaluated by Kubernates
+  # actions can be `Deny`(APIRequest rejected) , `Warn`(APIRequest can pass with a warning),
+  # `Deny + Audit` (Rejected with event written), `Warn + Audit` (Can Pass with event written), `Audit` can't be used alone
+  validationActions: ["Deny"]
+  # here the resource made available to check the expression in `ValidatingAdmissionPolicy` conterpart need to be matching this selector
+  # so not all deployments will be checked, only the ones in any namespace having the label `location=shibuya-level-5`
+  # therefore, the is what is checked first and only when this is satisfied the Admission policy check starts to be triggered and pass check those rules...
+  # now we are providing the reference of the config file that is going to be used as reference in the `validations.expression`
+  paramRef:
+    name: "watch.naruto.mister.w.com"
+    namespace: "mangakissa-zone"
+    # if the external resource reference is not there anymore it will deny any APIRequest
+    parameterNotFoundAction: "Deny"
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        location: shibuya-level-5
+        # location: ometesando-level-2
+```
+Then just create deployment yaml files to play with annotations changing the `ValidatingAdmissionPolicy` `validation.expression`
+also something that it is not in the documentation of Kubernetes is that using `paramRef` in `ValidatingAdmissionPolicyBinding` needs also in addition of `namespace` and `name`, a ` parameterNotFoundAction` ("Deny" or "Allow") taht would look if the referenced resource still exists. 
+
+- exmaple deployment used with `annotations` and can change the `annotations` or comment it out
+(cat mangakissa-admission-2-friends.yaml)
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: mangakissa-admission-friend
+  name: mangakissa-admission-2-friend
+  namespace: mangakissa-zone
+  annotations:
+    creditizens-vip-friends: "naruto no sound"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: mangakissa-admission-friend
+  template:
+    metadata:
+      labels:
+        app: mangakissa-admission-friend
+    spec:
+      containers:
+      - image: nginx
+        name: nginx
+```
+______________________________________________________________________
 # Next
 - [ ] do those kubernetes concepts:
     - [x] Storage
     - [x] Backup and Recovery
     - [x] Resources Limits
-    - [ ] Admission Policy
+    - [x] Admission Policy
     - [ ] Cronjob, Jobs
     - [ ] Damonsets
     - [ ] Kubernetes Kustomize
