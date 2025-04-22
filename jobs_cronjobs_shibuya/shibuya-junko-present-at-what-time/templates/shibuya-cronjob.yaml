@@ -1,0 +1,53 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: shibuya-cronjob
+spec:
+  # there are many options but we are going to use only what we need. go check documentation for other options like for example `concurrency`
+  # every minutes
+  schedule: "*/1 * * * *"
+  # this is how much logs we want to keep for success and failure of `cronjob` tasks
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  # now we go in a normal kubernetes `job` template
+  jobTemplate:
+    spec:
+      # here we put an option to make sure that stale job (finished jobs pods) are deleted
+      # kubernetes will be creating some pods to run those jobs and we want to automatically get rid of those that have done their work
+      # we will use a `TTL` time to live for it of 2mns
+      ttlSecondsAfterFinished: 120
+      template:
+        spec:
+          containers:
+          - name: junko-time-tracker
+            image: busybox:1.36.1
+            # we are writing here a command to an `index.html` page which will be written in the `shared-volume` folder
+            command:
+            - /bin/sh
+            - -c
+            - echo "<h1 style='display:flex;felx-direction:row;align-items:center;justify-content:center;color:green;'>Junko will be at Hachiko on the $(date | awk '{print $2,$3}') at exactly $(date | awk '{print $4}')</h1>" > "/tmp/index.html"
+            # now we are going to create the `volumeMount` at same location as the `nginx` other pods one's
+            volumeMounts:
+            - name: shared-volume
+              mountPath: "/tmp"
+          restartPolicy: OnFailure
+          # now the 'physical' `volume` on the `node` using `hostPath`
+          volumes:
+          - name: shared-volume
+            hostPath:
+              path: "/tmp"
+              # type: DirectoryOrCreate
+
+          # so we need also here to make sure that it is schedule in the `node` having the same label as the other pod. a 'unique` label for a unique node
+          # otherwise you can use `PVC` to have more freedom and have both using same `PVC` to share same `PV`
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                - matchExpressions:
+                  - key: location
+                    operator: In
+                    values:
+                    - shibuya
+
+

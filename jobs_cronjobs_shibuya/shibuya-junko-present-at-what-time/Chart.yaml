@@ -1,6 +1,6 @@
 apiVersion: v2
-name: shibuya-cronjob-helm
-description: A Helm chart for Kubernetes
+name: shibuya-junko-present-at-what-time
+description: "A web page showing in a period way, when is Junko present at Shibuya"
 
 # A chart can be either an 'application' or a 'library' chart.
 #

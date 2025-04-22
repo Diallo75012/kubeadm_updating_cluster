@@ -2,22 +2,25 @@ apiVersion: v1
 kind: Pod
 metadata:
   labels:
-    app: test-nginx
-  name: test-nginx
+    app: shibuya-webpage-info
+  name: shibuya-webpage-info
 spec:
   containers:
   - image: nginx
-    name: test-nginx
+    name: shibuya-webpage-info
     volumeMounts:
     - name: shared-volume
       mountPath: "/usr/share/nginx/html"
 
+  # for shared volumes on the node (physically present)
   volumes:
   - name: shared-volume
     hostPath:
       path: "/tmp"
-      #type: DirectoryOrCreate
+      # this will create the folders if not present on the node but we are not going to use it as it is not a volume video but cronjob
+      # type: DirectoryOrCreate
 
+  # for control on which node will host this pod so that the shared volume will be made available for our `cronjob` as well
   affinity:
     nodeAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
