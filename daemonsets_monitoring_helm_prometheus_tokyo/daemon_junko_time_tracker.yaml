@@ -18,12 +18,18 @@ spec:
       priorityClassName: tokyo-junko-time-tracker-priorityclass
       containers:
         - name: junko-time-tracker
-          image: busybox:1.36.1
+          # image: busybox:1.36.1
+          image: debian:bullseye-slim
           # we are writing here a command to an `index.html` page which will be written in the `shared-volume` folder
           command:
-          - /bin/sh
+          - /bin/bash
           - -c
-          - while true; do echo "<h1 style='display:flex;felx-direction:row;align-items:center;justify-content:center;color:green;'>Junko will be at Hachiko on the $(date | awk '{print $2,$3}') at exactly $(date | awk '{print $4}')</h1>" > "/tmp/junko-timing/index.html"; sleep 10; done
+          - |
+            while true;
+            colors=("yellow" "blue" "red" "violet" "pink" "green");
+            do echo "<h1 style='display:flex;felx-direction:row;align-items:center;justify-content:center;color:${colors[RANDOM % ${#colors[@]}]};'>Junko will be at Hachiko on $(date | awk '{print $2,$3}') at exactly $(date | awk '{print $4}')</h1>" > "/tmp/junko-timing/index.html";
+            sleep 2;
+            done
           resources:
             requests:
               memory: 100Mi

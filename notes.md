@@ -6728,7 +6728,7 @@ ______________________________________________________________________
     - [x] Cronjob, Jobs
     - [ ] Damonsets
     - [ ] Kubernetes Kustomize
-    - [ ] Helm
+    - [ ] Helm (partially seen through prometheus grafana and cronjobs)
 - [ ] update the cluster versions until we reach 1.32 (we are at 1.27)
     so we will have to do same process several times and fix any compatibility issues along the way.
     need to check supported versions ranges for each kubeadm updated version

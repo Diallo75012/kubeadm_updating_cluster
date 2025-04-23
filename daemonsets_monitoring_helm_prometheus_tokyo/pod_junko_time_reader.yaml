@@ -18,28 +18,30 @@ spec:
       limits:
         memory: 150Mi
         cpu: 250m
-    ports:
-    - containerPort: 9114
-      name: shibuya-webpage-info-container-metrix
-
-  #############################################################################################
-  - name: nginx-exporter
-    image: 'nginx/nginx-prometheus-exporter:0.10.0'
-    args:
-      - '-nginx.scrape-uri=http://localhost/nginx_status'
-    resources:
-      limits:
-        memory: 150Mi
-        cpu: 300m
     # MUST have por exposed
     ports:
-    - containerPort: 9113
-      name: nginx-exporter-container-metrix
+    - containerPort: 80
+      # MUST be max 15 characters
+      name: wbpage-metrix
+
+  #############################################################################################
+  #- name: nginx-exporter
+  #  image: 'nginx/nginx-prometheus-exporter:0.10.0'
+  #  args:
+  #    - '-nginx.scrape-uri=http://localhost/nginx_status'
+  #  resources:
+  #    limits:
+  #     memory: 150Mi
+  #      cpu: 300m
+  #  # MUST have por exposed
+  #  ports:
+  #  - containerPort: 9113
+  #    name: exporter-metrix
 
   #############################################################################################
   # now the 'physical' `volume` on the `node` using `hostPath`
   volumes:
   - name: shared-volume
     hostPath:
-    path: "/tmp/junko-timing"
-    type: "DirectoryOrCreate"
+      path: "/tmp/junko-timing"
+      type: "DirectoryOrCreate"

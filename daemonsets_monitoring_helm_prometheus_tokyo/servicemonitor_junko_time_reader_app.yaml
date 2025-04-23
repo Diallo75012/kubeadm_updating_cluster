@@ -13,7 +13,7 @@ spec:
       app: junko-time-reader-app-service
   # matched the port names in the service target
   endpoints:
-  - port: nginx-exporter-container-metrix
-    interval: 60s
-  - port: shibuya-webpage-info-container-metrix
-    interval: 60s
+  #- port: exporter-metrix
+  #  interval: 60s
+  - port: webpage-metrix
+    interval: 2s
