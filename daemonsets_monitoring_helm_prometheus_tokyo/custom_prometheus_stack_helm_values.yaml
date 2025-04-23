@@ -1,0 +1,35 @@
+# use command : helm install tokyo-mangakissa-monitoring prometheus-community/kube-prometheus-stack -f custom_prometheus_stack_helm_values.yaml  --namespace monitoring --create-namespace
+global:
+  scrape_interval: 60s  # scrape every 60 seconds instead of default 15s
+  evaluation_interval: 60s  # rule evaluations every 60 seconds
+
+prometheus:
+  prometheusSpec:
+    resources:
+      requests:
+        memory: "200Mi"
+        cpu: "50m"
+      limits:
+        memory: "500Mi"
+        cpu: "250m"
+    retention: "6h"  # (Optional) keep only 6 hours of metrics for lightweight demo
+    scrapeInterval: 60s  # Override inside prometheusSpec (some charts allow this too)
+    serviceMonitorSelector: {}  # Allow scraping ServiceMonitors if later you add them
+  service:
+    type: NodePort # patch from `ClusterIp` type to `NodePort`
+    nodePort: 30900
+
+nodeExporter:
+  resources:
+    requests:
+      memory: "100Mi"
+      cpu: "50m"
+    limits:
+      memory: "200Mi"
+      cpu: "100m"
+
+# grafana to NodePort and access it on port `32000`
+grafana:
+  service:
+    type: NodePort
+    nodePort: 32000  # or any available port between 30000–32767

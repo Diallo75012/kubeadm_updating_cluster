@@ -1,0 +1,19 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: junko-time-reader-app-servicemonitor
+  labels:
+    # MUST match your Prometheus Helm release label: so when using command `helm install <name_given>` should be same as `name_given`
+    release: tokyo-mangakissa-monitoring
+spec:
+  # selector that is targetting the service where `pod` `containers` `port` are relayed and here it get those by service port name for each of those.
+  selector:
+    matchLabels:
+      # targets service own label
+      app: junko-time-reader-app-service
+  # matched the port names in the service target
+  endpoints:
+  - port: nginx-exporter-container-metrix
+    interval: 60s
+  - port: shibuya-webpage-info-container-metrix
+    interval: 60s

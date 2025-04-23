@@ -1,0 +1,20 @@
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: medium-powered-priorityclass
+preemptionPolicy: Never
+# from `-2147483648` to `1000000000` 
+value: 100000
+globalDefault: false
+description: "This priority class is for medium priority pods only, don't use frequently, just for ones for maintenance to be above the normal pods one"
+
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: tokyo-junko-time-tracker-priorityclass
+# preemptionPolicy: Never
+# from `-2147483648` to `1000000000` 
+value: 500000
+globalDefault: false
+description: "This priority class is very high priority one, use it only for the Junko Tracker."

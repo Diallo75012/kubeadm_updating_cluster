@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: junko-time-tracker-daemon
+  namespace: kube-system
+  labels:
+    k8s-app: junko-tracker-daemon
+spec:
+  selector:
+    matchLabels:
+      name: junko-time-tracker-daemon
+  template:
+    metadata:
+      labels:
+        name: junko-time-tracker-daemon
+    spec:
+      # high priority class for preemption advantage on other pods
+      priorityClassName: tokyo-junko-time-tracker-priorityclass
+      containers:
+        - name: junko-time-tracker
+          image: busybox:1.36.1
+          # we are writing here a command to an `index.html` page which will be written in the `shared-volume` folder
+          command:
+          - /bin/sh
+          - -c
+          - while true; do echo "<h1 style='display:flex;felx-direction:row;align-items:center;justify-content:center;color:green;'>Junko will be at Hachiko on the $(date | awk '{print $2,$3}') at exactly $(date | awk '{print $4}')</h1>" > "/tmp/junko-timing/index.html"; sleep 10; done
+          resources:
+            requests:
+              memory: 100Mi
+              cpu: 100m
+            limits:
+              memory: 250Mi
+              cpu: 250m
+          # now we are going to create the `volumeMount` at same location as the `nginx` other pods one's
+          volumeMounts:
+          - name: shared-volume
+            mountPath: "/tmp/junko-timing"
+
+      terminationGracePeriodSeconds: 15
+
+      volumes:
+      - name: shared-volume
+        hostPath:
+          path: /tmp/junko-timing
+          type: "DirectoryOrCreate"

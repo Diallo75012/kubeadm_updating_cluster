@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: junko-time-reader-app-service
+  labels:
+    # label for the Service that would be used by the `ServiceMonitor` next resource created supported by `helm` that would target this service to scrape metrics
+    app: junko-time-reader-app-service
+spec:
+  # selector to target the `pod` label
+  selector:
+    #  targets pod own label
+    app: junko-time-reader-app
+  # Target container Ports exposed at pod level
+  ports:
+  - name: nginx-exporter-container-metrix
+    port: 9113
+    targetPort: 9113
+  - name: shibuya-webpage-info-container-metrix
+    port: 9114
+    targetPort: 9114

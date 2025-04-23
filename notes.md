@@ -6413,6 +6413,21 @@ so we will need to write a custom values.yaml file and use it to `override/patch
 ```bash
 helm install tokyo-mangakissa-monitoring prometheus-community/kube-prometheus-stack -f values.yaml
 ```
+or get the repo, update it, and then download it to be able to see the `values.yaml` file before patching it
+```bash
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+Outputs:
+"prometheus-community" has been added to your repositories
+
+helm repo update
+Outputs:
+Hang tight while we grab the latest from your chart repositories...
+...Successfully got an update from the "prometheus-community" chart repository
+Update Complete. ⎈Happy Helming!⎈
+
+helm pull prometheus-community/kube-prometheus-stack --untar
+# now a folder `kube-prometheus-stack` will be present with all files in it (can explore)
+```
 
 we will need to add `annotations` on `pods` so that we can have `metrics` of `pods` as `prometheus` is getting by default `cpu/memory` form underlying system (default: `node-level` resource scraping).
 (eg.: `pod-level` resource scraping)
@@ -6422,8 +6437,9 @@ annotations:
   prometheus.io/port: "8080"
 ```
 
-- `custom-values.yaml`
+- `custom_prometheus_stack_helm_values.yaml `
 ```yaml
+# use command : helm install tokyo-mangakissa-monitoring prometheus-community/kube-prometheus-stack -f custom_prometheus_stack_helm_values.yaml  --namespace monitoring --create-namespace
 global:
   scrape_interval: 60s  # scrape every 60 seconds instead of default 15s
   evaluation_interval: 60s  # rule evaluations every 60 seconds
@@ -6440,15 +6456,25 @@ prometheus:
     retention: "6h"  # (Optional) keep only 6 hours of metrics for lightweight demo
     scrapeInterval: 60s  # Override inside prometheusSpec (some charts allow this too)
     serviceMonitorSelector: {}  # Allow scraping ServiceMonitors if later you add them
+  service:
+    type: NodePort # patch from `ClusterIp` type to `NodePort`
+    nodePort: 30900
 
 nodeExporter:
   resources:
     requests:
-      memory: "100Mi"i
+      memory: "100Mi"
       cpu: "50m"
     limits:
       memory: "200Mi"
       cpu: "100m"
+
+# grafana to NodePort and access it on port `32000`
+grafana:
+  service:
+    type: NodePort
+    nodePort: 32000  # or any available port between 30000–32767
+
 ```
 - then get the repository and update your local helm repo and install it on the fly with name `tokyo-mangakissa-monitoring ` and flag `--create-namespace` which will create the `namespace` `monitoring` on the fly.
 ```bash
@@ -6456,6 +6482,7 @@ helm repo add prometheus-community https://prometheus-community.github.io/helm-c
 helm repo update
 helm install tokyo-mangakissa-monitoring prometheus-community/kube-prometheus-stack -f prometheus-values.yaml --namespace monitoring --create-namespace
 ```
+after need to use `port-forward` on the `grafana` pod to port `3000` to get access to dashboard
 - then expose the service `svc/prometheus-grafana`
 default login is `admin/prom-operator`
 
@@ -6520,35 +6547,49 @@ Then  we would use tear down the pod, add the annotation `prometheus.io/scrape: 
 apiVersion: v1
 kind: Pod
 metadata:
-  name: my-metrics-pod
+  name: junko-time-present-reader
   # MSUT set a label
   labels:
-    app: my-metrics-app
+    app: junko-time-reader-app
 spec:
-  containers:
-  - name: app1
-    image: myapp1
-    # MUST have por exposed
-    ports:
-    - containerPort: 8080
-      name: metrics1
-  - name: app2
-    image: myapp2
-    ports:
-    - containerPort: 9090
-      name: metrics2
 
+  containers:
+  #############################################################################################
+  - image: nginx
+    name: shibuya-webpage-info
+    volumeMounts:
+    - name: shared-volume
+      mountPath: "/usr/share/nginx/html"
+    resources:
+      limits:
+        memory: 150Mi
+        cpu: 250m
+    ports:
+    - containerPort: 9114
+      name: shibuya-webpage-info-container-metrix
+
+  #############################################################################################
   - name: nginx-exporter
     image: 'nginx/nginx-prometheus-exporter:0.10.0'
     args:
       - '-nginx.scrape-uri=http://localhost/nginx_status'
     resources:
       limits:
-        memory: 128Mi
-        cpu: 500m
-      ports:
-      - containerPort: 9113
-        name: metrics3
+        memory: 150Mi
+        cpu: 300m
+    # MUST have por exposed
+    ports:
+    - containerPort: 9113
+      name: nginx-exporter-container-metrix
+
+  #############################################################################################
+  # now the 'physical' `volume` on the `node` using `hostPath`
+  volumes:
+  - name: shared-volume
+    hostPath:
+    path: "/tmp/junko-timing"
+    type: "DirectoryOrCreate"
+
 ```
 
   - create a `Service` that selects the `pod` label
@@ -6556,23 +6597,23 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: my-metrics-service
+  name: junko-time-reader-app-service
   labels:
     # label for the Service that would be used by the `ServiceMonitor` next resource created supported by `helm` that would target this service to scrape metrics
-    app: my-metrics-app-service
+    app: junko-time-reader-app-service
 spec:
   # selector to target the `pod` label
   selector:
     #  targets pod own label
-    app: my-metrics-app
+    app: junko-time-reader-app
   # Target container Ports exposed at pod level
   ports:
-  - name: metrics1
-    port: 8080
-    targetPort: 8080
-  - name: metrics2
-    port: 9090
-    targetPort: 9090
+  - name: nginx-exporter-container-metrix
+    port: 9113
+    targetPort: 9113
+  - name: shibuya-webpage-info-container-metrix
+    port: 9114
+    targetPort: 9114
 ```
 
   - create a `ServiceMonitor` that would scrape that service relayed `containers` ports
@@ -6583,25 +6624,100 @@ spec:
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: my-metrics-servicemonitor
+  name: junko-time-reader-app-servicemonitor
   labels:
-        # MUST match your Prometheus Helm release label: so when using command `helm install <name_given>` should be same as `name_given`
-        release: tokyo-mangakissa-monitoring
+    # MUST match your Prometheus Helm release label: so when using command `helm install <name_given>` should be same as `name_given`
+    release: <tokyo-mangakissa-monitoring>
 spec:
   # selector that is targetting the service where `pod` `containers` `port` are relayed and here it get those by service port name for each of those.
   selector:
     matchLabels:
       # targets service own label
-      app: my-metrics-app-service
+      app: junko-time-reader-app-service
   # matched the port names in the service target
   endpoints:
-  - port: metrics1
+  - port: nginx-exporter-container-metrix
     interval: 60s
-  - port: metrics2
+  - port: shibuya-webpage-info-container-metrix
     interval: 60s
 ```
 
 - so workflow is : `servicemonitor target sevrice label and port names described in service` > `service target label pod and name exposed ports with mapping to those` > `pod container ports exposed`
+
+- then in our scenario we are going to create a `daemonset` that will write to that volume in a period manner using `sleep...`
+```yaml
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: junko-time-tracker-daemon
+  namespace: kube-system
+  labels:
+    k8s-app: junko-tracker-daemon
+spec:
+  selector:
+    matchLabels:
+      name: junko-time-tracker-daemon
+  template:
+    metadata:
+      labels:
+        name: junko-time-tracker-daemon
+    spec:
+      # high priority class for preemption advantage on other pods
+      priorityClassName: tokyo-junko-time-tracker-priorityclass
+      containers:
+        - name: junko-time-tracker
+          image: busybox:1.36.1
+          # we are writing here a command to an `index.html` page which will be written in the `shared-volume` folder
+          command:
+          - /bin/sh
+          - -c
+          - while true; do echo "<h1 style='display:flex;felx-direction:row;align-items:center;justify-content:center;color:green;'>Junko will be at Hachiko on the $(date | awk '{print $2,$3}') at exactly $(date | awk '{print $4}')</h1>" > "/tmp/junko-timing/index.html"; sleep 10; done
+          resources:
+            requests:
+              memory: 100Mi
+              cpu: 100m
+            limits:
+              memory: 250Mi
+              cpu: 250m
+          # now we are going to create the `volumeMount` at same location as the `nginx` other pods one's
+          volumeMounts:
+          - name: shared-volume
+            mountPath: "/tmp/junko-timing"
+
+      terminationGracePeriodSeconds: 15
+
+      volumes:
+      - name: shared-volume
+        hostPath:
+          path: /tmp/junko-timing
+          type: "DirectoryOrCreate"
+```
+(some priority classes)
+```yaml
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: medium-powered-priorityclass
+preemptionPolicy: Never
+# from `-2147483648` to `1000000000` 
+value: 100000
+globalDefault: false
+description: "This priority class is for medium priority pods only, don't use frequently, just for ones for maintenance to be above the normal pods one"
+
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: tokyo-junko-time-tracker-priorityclass
+# preemptionPolicy: Never
+# from `-2147483648` to `1000000000` 
+value: 500000
+globalDefault: false
+description: "This priority class is very high priority one, use it only for the Junko Tracker."
+```
+
+## diagram (if not available check folder concerned by this topic)
+(diagram daemonset-helm-prometheus)[https://excalidraw.com/#json=yG9lhk_ypG5Imszd2YRMQ,xDWJVf7bkaQr_Pl64nw0RA]
 ______________________________________________________________________
 # Next
 - [ ] do those kubernetes concepts:
