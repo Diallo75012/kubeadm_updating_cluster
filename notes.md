@@ -6726,7 +6726,7 @@ ______________________________________________________________________
     - [x] Resources Limits
     - [x] Admission Policy
     - [x] Cronjob, Jobs
-    - [ ] Damonsets
+    - [x] Damonsets
     - [ ] Kubernetes Kustomize
     - [ ] Helm (partially seen through prometheus grafana and cronjobs)
 - [ ] update the cluster versions until we reach 1.32 (we are at 1.27)
