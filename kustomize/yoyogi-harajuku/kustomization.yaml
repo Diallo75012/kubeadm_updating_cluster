@@ -1,0 +1,33 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- deployment.yaml
+configMapGenerator:
+# this one is to show vars avaialable in pod from file vars
+- name: yoyogi-data
+  files:
+  - yoyogi.properties
+# this one is to show that we can have vars available in pod like that from literals defined here
+- name: yoyogi-data2
+  literals:
+  - MANGAKISSA=lv5
+# here we get the config map to get data from file index.html
+- name: yoyogi-announcement
+  file:
+  - index.html
+secretGenerator:
+# this to show we can make available secret from .env file available in pod
+- name: shibuya-secret
+  envs:
+  - .env
+  # this to disable the automatic `suffix`
+  type: Opaque
+  options:
+    disableNameSuffixHash: true
+  # file:
+  # - <file_path>.txt
+
+
+      - name: yoyogi-message
+        hostPath:
+          path: "/tmp/index/html"

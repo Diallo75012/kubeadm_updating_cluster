@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: yoyogi-park
+  labels:
+    app: yoyogi-park
+spec:
+  selector:
+    matchLabels:
+      app: yoyogi-park
+  template:
+    metadata:
+      labels:
+        app: yoyogi-park
+    spec:
+      containers:
+      - name: yoyogi-message-app
+        image: nginx
+        volumeMounts:
+        - name: yoyogi-config
+          mountPath: "/config"
+        - name: secret-volume
+          readOnly: true
+          mountPath: "/django-project/my-secret-volume"
+        - name: yoyogi-message
+          mountPath: "/usr/share/nginx/html"
+
+      volumes:
+      - name: yoyogi-config
+        configMap:
+          name: yoyogi-data
+      - name: secret-volume
+        secret:
+          secretName: shibuya-secret
+      - name: yoyogi-message
+        configMap:
+          - name: yoyogi-announcement
+
+      affinity:
+        nodeAffinity:
+          nodeSelectorTerms:
+            matchExpression:
+            - key: location:
+              operator: In
+              values:
+                # label nodes differently for different entry of the park: `yoyogi-harajuku`, `yoyogi-shibuya`, yoyogi-shinjuku`
+                - yoyogi-harajuku
+
