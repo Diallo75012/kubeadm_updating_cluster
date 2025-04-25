@@ -13,7 +13,7 @@ configMapGenerator:
   - MANGAKISSA=lv5
 # here we get the config map to get data from file index.html
 - name: yoyogi-announcement
-  file:
+  files:
   - index.html
 secretGenerator:
 # this to show we can make available secret from .env file available in pod
@@ -21,13 +21,12 @@ secretGenerator:
   envs:
   - .env
   # this to disable the automatic `suffix`
-  type: Opaque
-  options:
-    disableNameSuffixHash: true
+  # type: Opaque
+  # options:
+    # disableNameSuffixHash: true
   # file:
   # - <file_path>.txt
 
-
-      - name: yoyogi-message
-        hostPath:
-          path: "/tmp/index/html"
+# this work fine if set here in the base, but when set in the overlays it doesn't have effect
+# generatorOptions:
+  # disableNameSuffixHash: true

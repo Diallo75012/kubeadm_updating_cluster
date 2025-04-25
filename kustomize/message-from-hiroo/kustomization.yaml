@@ -1,7 +1,13 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+
 namePrefix: important-updato-
+
+#generatorOptions:
+#  disableNameSuffixHash: true
+
 resources:
-- ../yoyogi-harajuku/deployment.yaml
+- ../yoyogi-harajuku
+
 patches:
   - path: new-message-configmap-patch.yaml

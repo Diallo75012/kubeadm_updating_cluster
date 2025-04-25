@@ -34,15 +34,16 @@ spec:
           secretName: shibuya-secret
       - name: yoyogi-message
         configMap:
-          - name: yoyogi-announcement
+          name: yoyogi-announcement
 
       affinity:
         nodeAffinity:
-          nodeSelectorTerms:
-            matchExpression:
-            - key: location:
-              operator: In
-              values:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              matchExpression:
+              - key: location
+                operator: In
+                values:
                 # label nodes differently for different entry of the park: `yoyogi-harajuku`, `yoyogi-shibuya`, yoyogi-shinjuku`
                 - yoyogi-harajuku
 
