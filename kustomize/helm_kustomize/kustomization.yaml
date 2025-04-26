@@ -13,11 +13,11 @@ resources:
 #  but, NO HELM RELEASE possibility, this is the limitation of`kustomize-helm`, therefore, NO ROLLBACK
 # just pulls repo and apply directly manifest to cluster with all defined in `helm chart`
 helmCharts:
-- name: kube-prometheus-stack
-  releaseName: prometheus
-  namespace: yoyogi-monitoring
-  repo: https://prometheus-community.github.io/helm-charts
-  version: 55.5.0
-  valuesFile: custom-yoyogi-monitoring-values.yaml
+- name: yoyogi-vistor
+  releaseName: yoyogi-visitor
+  namespace: default
+  repo: /home/creditizens/kubeadm_updating_cluster/kustomize/helm_kustomize/yoyogi-visitor
+  version: 0.0.1
+  valuesFile: custom-yoyogi-visitor-values.yaml
   includeCRDs: true
 

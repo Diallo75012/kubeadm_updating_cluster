@@ -1,0 +1,5 @@
+# config map color text
+htmlColor: violet
+# mood: Stressed, Happy, Spiritual (corresponding to `node-mood` labels)
+mood: nostalgic
+nodePort: 30088
