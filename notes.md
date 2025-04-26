@@ -6796,16 +6796,18 @@ So how does it works:
 - you create this `kustomization.yaml` file and have a specific `generator` like `configfMapGenerator` for example which will create a `kubernetes` `configMap`
   Then you can have otpion keywords to get values or key/values from `literals` that you declare in the file directly or `files` which will be referenced or `envs` for `.env` files
   We will use an eg. here but see documentation for other kind of resources and how to do those but this example will show how it is formatted in general
-```
+```bash
 # Create an application.properties file
 nano yoyogi.properties
 park-entry=harajuku
-
+```
+```bash
 # create a secrets.yaml file
 nano .env
 shibuya=isogashii
 tsutaya=busy
-
+```
+```bash
 # create a deployment
 nano deployment.yaml
 apiVersion: apps/v1
@@ -6840,7 +6842,8 @@ spec:
       - name: mysecret-volume
         secret:
           secretName: shibuya-secret
-
+```
+```bash
 # create the `kustomization.yaml` file that will create the configmap and the secret
 nano kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1

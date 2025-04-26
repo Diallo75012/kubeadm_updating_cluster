@@ -1,0 +1,7 @@
+# config map color text
+htmlColor: violet
+# mood: `stressed`, `happy`, `spiritual` (corresponding to `node-mood` labels)
+mood: nostalgic
+nodePort: 30088
+metadata:
+  namespace: yoyogi-park

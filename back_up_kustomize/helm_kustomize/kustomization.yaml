@@ -1,0 +1,43 @@
+# dicussion around issue of having `helm` local folder work, source: (using helm with `kustomize` bianry)[https://github.com/kubernetes-sigs/kustomize/issues/4378]
+# install `kustomize` binary locally: `curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"  | bash`
+# can add option `--load-restrictor=LoadRestrictionsNone` if having your `charts` folder outside not in same folder as your `kustomization.yaml` file
+# build with: `kustomize build . --enable-helm  > helm_kustomize_deploy_prep.yaml`
+# run with: `k apply -f helm_kustomize_deploy_prep.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# need the namespace to be created first and also need it to be done first otherwise error helm won't find it. so order in this file is top to bottom
+resources:
+  - yoyogi-park-namespace.yaml
+
+# the local `Helm` chart location path and NEED to be put in a `"charts"` folder
+# but anyway, when using the binary `kustomize` you MUST create a `charts` fodler and put your chart folder there
+#helmGlobals:
+#  chartHome: charts
+
+# what is good here is that we don't need to install `helm` in our terminal `helmCharts` will take care of everything, pulling and releasing
+#  but, NO HELM RELEASE possibility, this is the limitation of`kustomize-helm`, therefore, NO ROLLBACK
+# just pulls repo and apply directly manifest to cluster with all defined in `helm chart`
+helmCharts:
+- name: yoyogi-visitor
+  releaseName: yoyogi-visitor
+  # no need of namespace as it will be managed by `values.yaml` or `custom_values.yaml`
+  # namespace: yoyogi-park
+  # this for remote repo. if using local chart, create a folder `charts` and put your chart folder inside `charts/<your chart folder>/<...chart files+templates+values...>
+  # repo: https://github.com/...
+  #repo: charts/yoyogi-visitor
+  # version need to match your Chart.yaml variable `version` value. if using local chart no need, but for remote `repo` you need it
+  # version: 0.1.0
+  # indicate the path of the `values.yaml` to use, defautl one `<chart_folder/values.yaml>` if using `kubectl apply -k`/`kubectl kustomize ./`
+  # or custom one `custom_values.yaml` (make sure it is path from here so meaning where the `kustomization.yaml` file is or deeper but not `../` before)
+  # valuesFile: yoyogi-visitor/values.yaml
+  valuesFile: custom-yoyogi-visitor-values.yaml
+  # OR provide specific `values` key value pairs here directly
+  #valuesInline:
+    #mood: happy
+    #nodePort: 30089
+    #htmlColor: grey
+  # for some Charts having CRD's like the `helm-community/kube-prometheus-stack` one
+  # includeCRDs: false
+
+# if using `overlays/base` approach, you can use in the `kustomization.yaml` file: `HelmChartInflationGenerator`

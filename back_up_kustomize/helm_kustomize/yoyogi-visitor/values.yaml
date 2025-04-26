@@ -1,0 +1,7 @@
+# config map color text
+htmlColor: green
+# mood: `stressed`, `happy`, `spiritual` (corresponding to `node-mood` labels)
+mood: stressed
+nodePort: 30080
+metadata:
+  namespace: default
