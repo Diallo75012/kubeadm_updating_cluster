@@ -7165,6 +7165,17 @@ with this option to `k kustomize ` `--helm-command='helm'`: helm command (path t
 - `kustomize` with some options (prefix for example) but using overlay/base
 - `kustomize` +  `helm` example of `Prometheus` and advantage that we don't need to install `helm`.
   But finally decided to make an easy example as `helm` loses all it advantage when used with `kustomize` but can make a pod simple one an dput in the templates, deploy it using helm and then use kustomize to `kustomize` it using the option `helmCharts` so that i can show how to install `kustomize` binary and deploy that patch. just playing but `helm` by itself does it well.
+so we will for ksutomize+helm use helm and show it goes fine with our chart and the html page, then we create the charts/ folder and copy the chart used with helm in the charts/ folder and create a custom values.yaml file and create a yaml file to create our namespace and then we create the kustomization.yaml file that would that all of those into consideration to create the namespace and to update the other values so that we can show that the nodeport has changed and the message also has changed. show how to do it with `kustomize build` and with `kubectl apply -k`
+
+## issues with `kustomize + helm`
+- issue with `helmCharts` option of `kustomization.yaml` that is very limited in what can be done. so throws error as can't find the `helm` chart.
+- **solution**: learned that we need to create a `charts/` folder and put our chart folder insde and we need to use the option `--enable-helm`
+                can add option `--load-restrictor=LoadRestrictionsNone`
+                if having your `charts` folder outside not in same folder as your `kustomization.yaml` file
+                but better not do that as it overcomplicate it, `kustomize` is limited
+- issue: no `rollback` possible or `--create-namespace`, so forget of the power of `helm`
+- **solution**: just use `helm` for `helm` it is more powerful than `kustomize` anyway.
+
 ______________________________________________________________________
 # Next
 - [ ] do those kubernetes concepts:
