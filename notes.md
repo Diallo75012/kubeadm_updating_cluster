@@ -728,7 +728,7 @@ kubectl delete ns nginx
 
 ________________________________________________________________________________________________________________
 # cNext
-- [ ] update the cluster versions until we reach 1.32 (we are at 1.27)
+- [x] update the cluster versions until we reach 1.32 (we are at 1.27)
     so we will have to do same process several times and fix any compatibility issues along the way.
     need to check supported versions ranges for each kubeadm updated version
 
@@ -1578,6 +1578,9 @@ my-nginx-2035384211-u2c7e   1/1       Running   0          23m       fe
 my-nginx-2035384211-u3t6x   1/1       Running   0          23m       fe
 ```
 
+
+___________________________________________________________________________________
+
 # Node Affinity and Anti-Affinity
 
 - here we can use `nodeSelector` which only select nodes with specific labels
@@ -1631,6 +1634,7 @@ Is done using keyword in `operator`:
 - `NotIn`
 - `DoesNotExist`
 
+______________________________________________________________________________________________
 
 # Taints & Tolerations
 source: (doc taints and tolerations)[https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/]
@@ -3084,23 +3088,23 @@ sudo systemctl restart kubelet
 
 _________________________________________________________________
 
-# STORAGE
+# storage
 
-## Persistant Volumes (PVs)
+## persistant volumes (pvs)
 ```yaml
-apiVersion: v1
-kind: PersistentVolume
+apiversion: v1
+kind: persistentvolume
 metadata:
   name: pv0003
 spec:
   capacity:
-    storage: 5Gi
-  volumeMode: Filesystem
-  accessModes:
-    - ReadWriteOnce
-  persistentVolumeReclaimPolicy: Recycle
-  storageClassName: slow
-  mountOptions:
+    storage: 5gi
+  volumemode: filesystem
+  accessmodes:
+    - readwriteonce
+  persistentvolumereclaimpolicy: recycle
+  storageclassname: slow
+  mountoptions:
     - hard
     - nfsvers=4.1
   nfs:
@@ -3109,229 +3113,229 @@ spec:
 ```
 
 
-Like when a pod is created it request cpu and memory from the node,
-here the `PVs` are the resources configured by th ecluster admin and `PVCs` (persistant volume claims) are like the pods requestiong for resources to be mounted.
-Different access depending on what it is wanted to be done, but not only,
+like when a pod is created it request cpu and memory from the node,
+here the `pvs` are the resources configured by th ecluster admin and `pvcs` (persistant volume claims) are like the pods requestiong for resources to be mounted.
+different access depending on what it is wanted to be done, but not only,
 also depends on the resource that is used for storage,
 like some accept multiple entries while others have some different specifics:
-**Important those are NOT GUARANTEED as no constraint is put by Kubernetes on those volumes**
-- ReadWriteOnce (RWO): `single node` mount, can be `red and written` by all pods living on that node.
-- ReadOnlyMany (ROX): this volume can be mounted as `read only` by `many modes`
-- ReadWriteMany (RWX): this volume can be mounted as `read and write` by `many modes`
-- ReadWriteOncePod (RWOP): this volume ensures that accros the whole cluster `only one pod` can `read and write` on the volume
-source: (Check doc to see table of volumes and what access mode they support or not)[https://kubernetes.io/docs/concepts/storage/persistent-volumes/#access-modes]
+**important those are not guaranteed as no constraint is put by kubernetes on those volumes**
+- readwriteonce (rwo): `single node` mount, can be `red and written` by all pods living on that node.
+- readonlymany (rox): this volume can be mounted as `read only` by `many modes`
+- readwritemany (rwx): this volume can be mounted as `read and write` by `many modes`
+- readwriteoncepod (rwop): this volume ensures that accros the whole cluster `only one pod` can `read and write` on the volume
+source: (check doc to see table of volumes and what access mode they support or not)[https://kubernetes.io/docs/concepts/storage/persistent-volumes/#access-modes]
 
-eg: `hostPath` is supporting only `ReadWriteOnce`
+eg: `hostpath` is supporting only `readwriteonce`
 and this is what we are probably going to use as we are running `kubeadm` locally
 and not in the cloud (no `ebs` volumes for eg.) 
 
-### Storage Class of PVs
-`PVs` with annotation (might become deprecated) `volume.beta.kubernetes.io/storage-class`
-or `storageClassName` (more actual way of doing it) would only be mounted by claims matching those
-otherwise `PVs` without it would be bound to `PVCs` that do not specify storage class.
+### storage class of pvs
+`pvs` with annotation (might become deprecated) `volume.beta.kubernetes.io/storage-class`
+or `storageclassname` (more actual way of doing it) would only be mounted by claims matching those
+otherwise `pvs` without it would be bound to `pvcs` that do not specify storage class.
 
-### Reclaim Policy
-- Retain -- manual reclamation
-- Recycle -- basic scrub (rm -rf /thevolume/*) and this only for `nfs` and `hostPath` types of volumes
-- Delete -- delete the volume
+### reclaim policy
+- retain -- manual reclamation
+- recycle -- basic scrub (rm -rf /thevolume/*) and this only for `nfs` and `hostpath` types of volumes
+- delete -- delete the volume
 
-### Affinity
-Can be set only when using `local`(which can only be a static PV and not Dynamic one) `PVs`.
+### affinity
+can be set only when using `local`(which can only be a static pv and not dynamic one) `pvs`.
 
-### Example `YAML` file showing those previous concepts with field defined
-source: (PVs type: local)[https://kubernetes.io/docs/concepts/storage/volumes/#local]
-source: (STorageClass Creation)[https://kubernetes.io/docs/concepts/storage/storage-classes/#local]
+### example `yaml` file showing those previous concepts with field defined
+source: (pvs type: local)[https://kubernetes.io/docs/concepts/storage/volumes/#local]
+source: (storageclass creation)[https://kubernetes.io/docs/concepts/storage/storage-classes/#local]
 
-so when using `local` types of volumes we **MUST** set node affinity!
-here we do use example from documentation using `local` volumes to set `volumeBindingMode` set to `WaitForFirstConsumer` in the first `yaml` part.
-Other than that we could use are `hostPath` and `emptyDir`. Those could also be used for SSD/USB/FIlePath and depends on underlying system access to those.
+so when using `local` types of volumes we **must** set node affinity!
+here we do use example from documentation using `local` volumes to set `volumebindingmode` set to `waitforfirstconsumer` in the first `yaml` part.
+other than that we could use are `hostpath` and `emptydir`. those could also be used for ssd/usb/filepath and depends on underlying system access to those.
 
 ```yaml
 ---
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
+apiversion: storage.k8s.io/v1
+kind: storageclass
 metadata:
   name: local-storage
-provisioner: kubernetes.io/no-provisioner # indicates that this StorageClass does not support automatic provisioning
-volumeBindingMode: WaitForFirstConsumer
+provisioner: kubernetes.io/no-provisioner # indicates that this storageclass does not support automatic provisioning
+volumebindingmode: waitforfirstconsumer
 
 ---
-apiVersion: v1
-kind: PersistentVolume
+apiversion: v1
+kind: persistentvolume
 metadata:
   name: example-pv
 # probably goes here
 spec:
 # here we set the capacity of this volume made available in the cluster to pods (in nodes following the defined affinity here)
   capacity:
-    storage: 100Gi
-# `FileStystem` if using file system otherwise use `Block` as well for hard drives probably
-  volumeMode: Filesystem
-# the access mode RWO
-  accessModes:
-  - ReadWriteOnce
-# the reclaim policy type set to `Delete`
-  persistentVolumeReclaimPolicy: Delete
-# the `storageClassName` defined in the above `yaml`
-  storageClassName: local-storage
+    storage: 100gi
+# `filestystem` if using file system otherwise use `block` as well for hard drives probably
+  volumemode: filesystem
+# the access mode rwo
+  accessmodes:
+  - readwriteonce
+# the reclaim policy type set to `delete`
+  persistentvolumereclaimpolicy: delete
+# the `storageclassname` defined in the above `yaml`
+  storageclassname: local-storage
 # using here `local` which makes us then obliged to use node affinity
   local:
     path: /mnt/disks/ssd1
 # here creating the node affinity constraint
-  nodeAffinity:
+  nodeaffinity:
     required:
-      nodeSelectorTerms:
-      - matchExpressions:
+      nodeselectorterms:
+      - matchexpressions:
         - key: kubernetes.io/hostname
-          operator: In
+          operator: in
           values:
           - example-node
 ```
 
-### Little Schema To understand
--> StorageClass
-  -> PV uses that storage class and defines volume size, access mode, reclaim policy, node affinity (if local type of volume)
-    -> pods request the PV with the right storage class
+### little schema to understand
+-> storageclass
+  -> pv uses that storage class and defines volume size, access mode, reclaim policy, node affinity (if local type of volume)
+    -> pods request the pv with the right storage class
 
-**Note:** Delaying volume binding ensures that the PersistentVolumeClaim binding decision will also be evaluated with any other node constraints the Pod may have,
-such as node resource requirements, node selectors, Pod affinity, and Pod anti-affinity.
+**note:** delaying volume binding ensures that the persistentvolumeclaim binding decision will also be evaluated with any other node constraints the pod may have,
+such as node resource requirements, node selectors, pod affinity, and pod anti-affinity.
 
-### IN THE CLOUD
-In the cloud it is different than locally running a Kubernetes cluster as for the `CSI` (Container Storage Interface) different drivers would be used
+### in the cloud
+in the cloud it is different than locally running a kubernetes cluster as for the `csi` (container storage interface) different drivers would be used
 so need to check on the documentation and also what is possible to do and not.
-It works like that:
-- `CSI` driver is deployed in the Kubernetes cluster
-- then from that moment the Cloud volumes would be available to be mounted and used. After depends on which ones are available
-- different Cloud Providers have different settings in how many volumes MAX could be attached to a single node.
-- Need also to check on that. eg: x36 `EBS` volumes for `AWS` on each node and there is an env var that can be modified to have control on that...check docs!.
+it works like that:
+- `csi` driver is deployed in the kubernetes cluster
+- then from that moment the cloud volumes would be available to be mounted and used. after depends on which ones are available
+- different cloud providers have different settings in how many volumes max could be attached to a single node.
+- need also to check on that. eg: x36 `ebs` volumes for `aws` on each node and there is an env var that can be modified to have control on that...check docs!.
 
-### PVs Phases
-those are the different states that PVs can have:
-- `Available`: a free resource that is not yet bound to a claim
-- `Bound`: the volume is bound to a claim
-- `Released`: the claim has been deleted, but the associated storage resource is not yet reclaimed by the cluster
-- `Failed`: the volume has failed its (automated) reclamation
+### pvs phases
+those are the different states that pvs can have:
+- `available`: a free resource that is not yet bound to a claim
+- `bound`: the volume is bound to a claim
+- `released`: the claim has been deleted, but the associated storage resource is not yet reclaimed by the cluster
+- `failed`: the volume has failed its (automated) reclamation
 
 
 
-## Persistant Volume Cliam PVCs
+## persistant volume cliam pvcs
 ```yaml
-apiVersion: v1
-kind: PersistentVolumeClaim
+apiversion: v1
+kind: persistentvolumeclaim
 metadata:
   name: myclaim
 spec:
-  accessModes:
-    - ReadWriteOnce
-  volumeMode: Filesystem
+  accessmodes:
+    - readwriteonce
+  volumemode: filesystem
   resources:
     requests:
-      storage: 8Gi
-  storageClassName: slow
+      storage: 8gi
+  storageclassname: slow
   selector:
       release: "stable"
-    matchExpressions:
-      - {key: environment, operator: In, values: [dev]}
+    matchexpressions:
+      - {key: environment, operator: in, values: [dev]}
 ```
 
-### Access modes and Volumes Types
-Same as `PVs` ones
+### access modes and volumes types
+same as `pvs` ones
 
-### Resources
-Here is the difference as this is a `claim` the pod would request for a certain amount of resources (like a pod would do to request cpu and memory).
+### resources
+here is the difference as this is a `claim` the pod would request for a certain amount of resources (like a pod would do to request cpu and memory).
 
-### Selectors
-To match a set of specific volumes, volumes can be labelled and the `PVC` would use a selector like we do with pods.
-It is ANDed:
-- matchLabels - the volume must have a label with this value
-- matchExpressions with operators: In, NotIn, Exists, and DoesNotExist
+### selectors
+to match a set of specific volumes, volumes can be labelled and the `pvc` would use a selector like we do with pods.
+it is anded:
+- matchlabels - the volume must have a label with this value
+- matchexpressions with operators: in, notin, exists, and doesnotexist
 
-### Class 'storageClass'
-a `PVC` can actually specify a storage class by name using: `storageClassName`
-if `storageClassName: ""`:
-- it will be set for `PV` taht do not have any storage class name
-  - if `DefaultStorageClass` have been enabled in the kubernetes cluster.
-    done by adding annotation: `storageclass.kubernetes.io/is-default-class:true` (will be deprecated, better to use `storageClassName`):
-    - the `storageClassName: ""` request would be bounded to the default `storageClass` set by the kubernetes admin
-  - if `DefaultStorageClass` is not enabled: the `PVC` would be bound to the latest `PV` created. Order is from the newest to the oldest if many.
-    and those `PVs` need to also have `storageClassName: ""`.
+### class 'storageclass'
+a `pvc` can actually specify a storage class by name using: `storageclassname`
+if `storageclassname: ""`:
+- it will be set for `pv` taht do not have any storage class name
+  - if `defaultstorageclass` have been enabled in the kubernetes cluster.
+    done by adding annotation: `storageclass.kubernetes.io/is-default-class:true` (will be deprecated, better to use `storageclassname`):
+    - the `storageclassname: ""` request would be bounded to the default `storageclass` set by the kubernetes admin
+  - if `defaultstorageclass` is not enabled: the `pvc` would be bound to the latest `pv` created. order is from the newest to the oldest if many.
+    and those `pvs` need to also have `storageclassname: ""`.
 
-Some other rules:
-- can create `PVC` without `storageClassName` only when the `DefaultStorageClass` is not enabled.
-- if no `StorageClassName` defined when creating a `PVC` and then you enable `DefaultStorageClass`, kubernetes would set `StorageClassName: ""` to those `PVCs`
-- if `StorageClassName: ""` defined in `PVC` and then you enable `DefaultStorageClass`, kubernetes won't update those `PVCs` as those are fine with the right `:""`
+some other rules:
+- can create `pvc` without `storageclassname` only when the `defaultstorageclass` is not enabled.
+- if no `storageclassname` defined when creating a `pvc` and then you enable `defaultstorageclass`, kubernetes would set `storageclassname: ""` to those `pvcs`
+- if `storageclassname: ""` defined in `pvc` and then you enable `defaultstorageclass`, kubernetes won't update those `pvcs` as those are fine with the right `:""`
 
-## Namespaced or not?
-- `PVs` are NOT namespaced
-- `StorageClasses` are NOT namespaces
-- `PVCs` are YES namespaces
+## namespaced or not?
+- `pvs` are not namespaced
+- `storageclasses` are not namespaces
+- `pvcs` are yes namespaces
 ```bash
 # k api-resources | grep "storageclasses"
-storageclasses                    sc           storage.k8s.io/v1                      false        StorageClass
+storageclasses                    sc           storage.k8s.io/v1                      false        storageclass
 
 # k api-resources | grep "pv"
-persistentvolumeclaims            pvc          v1                                     true         PersistentVolumeClaim
-persistentvolumes                 pv           v1                                     false        PersistentVolume
+persistentvolumeclaims            pvc          v1                                     true         persistentvolumeclaim
+persistentvolumes                 pv           v1                                     false        persistentvolume
 ```
 
-## Claim as Volume
+## claim as volume
 source: (claims as volume)[https://kubernetes.io/docs/concepts/storage/persistent-volumes/#claims-as-volumes]
 ```yaml
-apiVersion: v1
-kind: Pod
+apiversion: v1
+kind: pod
 metadata:
   name: mypod
 spec:
   containers:
     - name: myfrontend
       image: nginx
-      volumeMounts:
-      - mountPath: "/var/www/html"
+      volumemounts:
+      - mountpath: "/var/www/html"
         name: mypd
   volumes:
     - name: mypd
-      persistentVolumeClaim:
-        claimName: myclaim
+      persistentvolumeclaim:
+        claimname: myclaim
 ```
 
-## Raw Block as Volume
-**Note:** Here instead of using `mountPath` on the pod `volume` we use `devicePath`
-- `PV`
+## raw block as volume
+**note:** here instead of using `mountpath` on the pod `volume` we use `devicepath`
+- `pv`
 ```yaml
-apiVersion: v1
-kind: PersistentVolume
+apiversion: v1
+kind: persistentvolume
 metadata:
   name: block-pv
 spec:
   capacity:
-    storage: 10Gi
-  accessModes:
-    - ReadWriteOnce
-  volumeMode: Block
-  persistentVolumeReclaimPolicy: Retain
+    storage: 10gi
+  accessmodes:
+    - readwriteonce
+  volumemode: block
+  persistentvolumereclaimpolicy: retain
   fc:
-    targetWWNs: ["50060e801049cfd1"]
+    targetwwns: ["50060e801049cfd1"]
     lun: 0
-    readOnly: false
+    readonly: false
 
 ```
-- `PVC`
-```yaml apiVersion: v1
-kind: PersistentVolumeClaim
+- `pvc`
+```yaml apiversion: v1
+kind: persistentvolumeclaim
 metadata:
   name: block-pvc
 spec:
-  accessModes:
-    - ReadWriteOnce
-  volumeMode: Block
+  accessmodes:
+    - readwriteonce
+  volumemode: block
   resources:
     requests:
-      storage: 10Gi
+      storage: 10gi
 ```
-- `Pod`
+- `pod`
 ```yaml
-apiVersion: v1
-kind: Pod
+apiversion: v1
+kind: pod
 metadata:
   name: pod-with-block-volume
 spec:
@@ -3340,158 +3344,158 @@ spec:
       image: fedora:26
       command: ["/bin/sh", "-c"]
       args: [ "tail -f /dev/null" ]
-      volumeDevices:
+      volumedevices:
         - name: data
-# here we use `devicePath` instead of `mountPath`
-          devicePath: /dev/xvda
+# here we use `devicepath` instead of `mountpath`
+          devicepath: /dev/xvda
   volumes:
     - name: data
-      persistentVolumeClaim:
-        claimName: block-pvc
+      persistentvolumeclaim:
+        claimname: block-pvc
 ```
 
-## Enabling `--feature-gates` to make Cross-Namespace Volumes Possible [`Alpha`]
+## enabling `--feature-gates` to make cross-namespace volumes possible [`alpha`]
 source: (cross namespace volumes)[https://kubernetes.io/docs/concepts/storage/persistent-volumes/#cross-namespace-data-sources]
-Kubernetes supports cross namespace volume data sources.
-To use cross namespace volume data sources, 
-you must enable the AnyVolumeDataSource and CrossNamespaceVolumeDataSource feature gates for the kube-apiserver and kube-controller-manager. 
-Also, you must enable the CrossNamespaceVolumeDataSource feature gate for the csi-provisioner.
+kubernetes supports cross namespace volume data sources.
+to use cross namespace volume data sources, 
+you must enable the anyvolumedatasource and crossnamespacevolumedatasource feature gates for the kube-apiserver and kube-controller-manager. 
+also, you must enable the crossnamespacevolumedatasource feature gate for the csi-provisioner.
 
-Enabling the CrossNamespaceVolumeDataSource feature gate allows you to specify a namespace in the dataSourceRef field.
+enabling the crossnamespacevolumedatasource feature gate allows you to specify a namespace in the datasourceref field.
 
 
-## Strictly binding a PVC with a PV
-**Good if `PV` set `persistentVolumeReclaimPolicy: Retain`** 
+## strictly binding a pvc with a pv
+**good if `pv` set `persistentvolumereclaimpolicy: retain`** 
 source: (doc)[https://kubernetes.io/docs/concepts/storage/persistent-volumes/#persistentvolumeclaims]
 
 - this will not strictly bind it:
 ```yaml
-apiVersion: v1
-kind: PersistentVolumeClaim
+apiversion: v1
+kind: persistentvolumeclaim
 metadata:
   name: foo-pvc
   namespace: foo
 spec:
-  storageClassName: "" # Empty string must be explicitly set otherwise default StorageClass will be set
-  volumeName: foo-pv
+  storageclassname: "" # empty string must be explicitly set otherwise default storageclass will be set
+  volumename: foo-pv
   ...
 ```
-- this would strictly bind it by reserving that `PV` to that `PVC` using `claimRef`:
-Therefore, here it has to be set also on the `PV` side the `claimRef` referencing the corresponding `PVC`
+- this would strictly bind it by reserving that `pv` to that `pvc` using `claimref`:
+therefore, here it has to be set also on the `pv` side the `claimref` referencing the corresponding `pvc`
 ```yaml
-apiVersion: v1
-kind: PersistentVolume
+apiversion: v1
+kind: persistentvolume
 metadata:
   name: foo-pv
 spec:
-  storageClassName: ""
-# so here we use `clainRef` to bind the `PV` to a claim
-  claimRef:
+  storageclassname: ""
+# so here we use `clainref` to bind the `pv` to a claim
+  claimref:
     name: foo-pvc
     namespace: foo
   ...
 ```
-- Recap comnditions for this to work:
-`PVC` -> referencing the `PV` using `volumeName`
-`PV` -> referencing `PVC` using `claimRef`
+- recap comnditions for this to work:
+`pvc` -> referencing the `pv` using `volumename`
+`pv` -> referencing `pvc` using `claimref`
 
-## RECAP (ChatGPT)
-### Dynamic Provisioning.
-Here kubernetes creates the `PV` **automatically**
+## recap (chatgpt)
+### dynamic provisioning.
+here kubernetes creates the `pv` **automatically**
 
-**Define:**
-- a StorageClass
-- a PVC (that refers to that StorageClass)
-- and a Pod that uses the PVC
-- Then Kubernetes automatically creates the PersistentVolume (PV)
-- no need to pre-create a PV.
-
-
-**Why create PVs manually (Static Provisioning)?**
-Only create a PV manually when:
-- Static Provisioning: have pre-existing storage (e.g., a mounted NFS share, disk partition, etc.) and want to bind it manually.
-- Want to control which pod gets which exact volume (e.g., binding a specific disk to a specific application).
-- For air-gapped clusters or restricted environments where can't use dynamic storage backends.
-- For on-premise storage where the admin provisions and maintains volumes manually.
+**define:**
+- a storageclass
+- a pvc (that refers to that storageclass)
+- and a pod that uses the pvc
+- then kubernetes automatically creates the persistentvolume (pv)
+- no need to pre-create a pv.
 
 
-**So two options:**
-|Option	|What You Define	|Who Creates the PV	|Use Case |
+**why create pvs manually (static provisioning)?**
+only create a pv manually when:
+- static provisioning: have pre-existing storage (e.g., a mounted nfs share, disk partition, etc.) and want to bind it manually.
+- want to control which pod gets which exact volume (e.g., binding a specific disk to a specific application).
+- for air-gapped clusters or restricted environments where can't use dynamic storage backends.
+- for on-premise storage where the admin provisions and maintains volumes manually.
+
+
+**so two options:**
+|option	|what you define	|who creates the pv	|use case |
 +-------+-----------------------+-----------------------+---------+
-|Dynamic Provisioning	|StorageClass + PVC	|Kubernetes (automatically)	|Most common, easy, scalable|
+|dynamic provisioning	|storageclass + pvc	|kubernetes (automatically)	|most common, easy, scalable|
 +-----------------------+-----------------------+-------------------------------+---------------------------+
-|Static Provisioning	|PV + PVC	|You (admin)	|Pre-provisioned disks, special use cases|
+|static provisioning	|pv + pvc	|you (admin)	|pre-provisioned disks, special use cases|
 +-----------------------+---------------+---------------+----------------------------------------+
 
-**Can a Pod bind to a specific PV?**
-Indirectly, yes — by:
-- Creating a PVC with:
+**can a pod bind to a specific pv?**
+indirectly, yes — by:
+- creating a pvc with:
   - the same:
     - storage size
-    - accessModes
-  - and optionally matching the volumeName or selector labels used by the PV
+    - accessmodes
+  - and optionally matching the volumename or selector labels used by the pv
 
-Then the PVC will bind to that specific PV.
+then the pvc will bind to that specific pv.
 
-# When using `WaitForFirstConsumer` in `StorageClass`, you need to:
-**Important:**
-Let's say we are in the example of some `scheduling` rules for pods that need to be in certain zones or nodes in the world.
-Now the default behavior is `immediate` binding of the `PVC` to available volumes `PVs`. But this would by-pass the `scheduling` requirements.
-Therefore, an issue as you won't get your workload following the rule set for the `scheduler` in the `pod`. 
-This is when we use `WaitForFirstConsumer` for the `scheduler` to be taken into consideration by delaying the volume binding.
-Now it is given the time to understand the zones and nodes, the resouces limits (taint/toleration, affinity and more ...) in each for each pods and the full environemnt for a good scheduling of the volumes.
-So here to resume we are not by-passing topology rules and scheduler contraints.
+# when using `waitforfirstconsumer` in `storageclass`, you need to:
+**important:**
+let's say we are in the example of some `scheduling` rules for pods that need to be in certain zones or nodes in the world.
+now the default behavior is `immediate` binding of the `pvc` to available volumes `pvs`. but this would by-pass the `scheduling` requirements.
+therefore, an issue as you won't get your workload following the rule set for the `scheduler` in the `pod`. 
+this is when we use `waitforfirstconsumer` for the `scheduler` to be taken into consideration by delaying the volume binding.
+now it is given the time to understand the zones and nodes, the resouces limits (taint/toleration, affinity and more ...) in each for each pods and the full environemnt for a good scheduling of the volumes.
+so here to resume we are not by-passing topology rules and scheduler contraints.
 
-- `StorageClass`: use of `WaitForFirstConsumer` with `allowedTopologies`
+- `storageclass`: use of `waitforfirstconsumer` with `allowedtopologies`
 ```yaml
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
+apiversion: storage.k8s.io/v1
+kind: storageclass
 metadata:
   name: standard
 provisioner:  example.com/example
 parameters:
   type: pd-standard
-# can be `Delete` to delete `PV` automatically created when `PVC` is deleted, or `Retain` which is the default one keeping the volume created intact 
-ReclaimPolicy: Delete
-volumeBindingMode: WaitForFirstConsumer
-allowedTopologies:
-- matchLabelExpressions:
+# can be `delete` to delete `pv` automatically created when `pvc` is deleted, or `retain` which is the default one keeping the volume created intact 
+reclaimpolicy: delete
+volumebindingmode: waitforfirstconsumer
+allowedtopologies:
+- matchlabelexpressions:
   - key: topology.kubernetes.io/zone
     values:
     - us-central-1a
     - us-central-1b
 ```
-**Notes About `RetainPolicy`**: there is another `RetainPolicy` also that can be set when setting `Static` provisioning meaning that you are the one who
-create the `PV`, the `PV` itself have a `PersistentVolumeReclaimPolicy` which takes precedence on the one set in the `StorageClass` so no need to set one in the `StorageClass` when creating a `Static` volume. Also it can be patched so changed. In the case of `Dynamic` so creation by `StorageClass` matching `PV` it will be taking the `StorageClass` defined `ReclaimPolicy`
+**notes about `retainpolicy`**: there is another `retainpolicy` also that can be set when setting `static` provisioning meaning that you are the one who
+create the `pv`, the `pv` itself have a `persistentvolumereclaimpolicy` which takes precedence on the one set in the `storageclass` so no need to set one in the `storageclass` when creating a `static` volume. also it can be patched so changed. in the case of `dynamic` so creation by `storageclass` matching `pv` it will be taking the `storageclass` defined `reclaimpolicy`
 
-- Pod: not using `nodeName` but `hostName` in selector when not using affinity
-Here we can see the way to use `nodeSelector` as well
+- pod: not using `nodename` but `hostname` in selector when not using affinity
+here we can see the way to use `nodeselector` as well
 ```yaml
 spec:
-  nodeSelector:
+  nodeselector:
     kubernetes.io/hostname: kube-01
 ```
 
 # some extra to know
-- `StorageClass`(storageclass.yaml) is not indicating the `capacity`, but the `PVC`(pvc.yaml) would indicate `capacity` (`resources` -> `request` -> `storage`)
-  and then the pod would reference that `PVC`.
-  This is how the `Pod` would get request resources satisfied and volume mounted ('persistentVolumeClaim' -> `claimName`). 
-  `PV` would be created automatically (`Dynamic`) by kubernetes.
-- You need to install `CSI` drivers if you want to extend storage to external ones (like they do in the cloud,
-  see next the example with local `S3` like volume using `Minio` which can listen to a directory path...)
+- `storageclass`(storageclass.yaml) is not indicating the `capacity`, but the `pvc`(pvc.yaml) would indicate `capacity` (`resources` -> `request` -> `storage`)
+  and then the pod would reference that `pvc`.
+  this is how the `pod` would get request resources satisfied and volume mounted ('persistentvolumeclaim' -> `claimname`). 
+  `pv` would be created automatically (`dynamic`) by kubernetes.
+- you need to install `csi` drivers if you want to extend storage to external ones (like they do in the cloud,
+  see next the example with local `s3` like volume using `minio` which can listen to a directory path...)
 
 
 
-# example `S3` like volume using `Minio`
-What is interesting with `Minio` is that it can listen to a folder path if it is used for it's bucket path
-So here the solution would  be to install a `CSI` criver for the `s3` like volume.
-and then have a local `Minio` OR `external` to the cluster listening on a node folder path or internal to the cluster sharing volume with the host node and being
+# example `s3` like volume using `minio`
+what is interesting with `minio` is that it can listen to a folder path if it is used for it's bucket path
+so here the solution would  be to install a `csi` criver for the `s3` like volume.
+and then have a local `minio` or `external` to the cluster listening on a node folder path or internal to the cluster sharing volume with the host node and being
 used as `sidecar` container.
-- **Deploy the `CSI` driver**: follow installation (instructions)[https://github.com/ctrox/csi-s3] of this `csi-s3` available on `github`
-- **Create StorageClass**: this `StorageClass` would be using it:
+- **deploy the `csi` driver**: follow installation (instructions)[https://github.com/ctrox/csi-s3] of this `csi-s3` available on `github`
+- **create storageclass**: this `storageclass` would be using it:
 ```yaml
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
+apiversion: storage.k8s.io/v1
+kind: storageclass
 metadata:
   name: s3-storage
 provisioner: s3.csi.k8s.io
@@ -3501,36 +3505,36 @@ parameters:
   mounter: rclone
   options: --s3-endpoint=https://s3.amazonaws.com
 ```
-- **Create `PVC`**: this `PVC` would reference the `StorageClass`
+- **create `pvc`**: this `pvc` would reference the `storageclass`
 ```yaml
-apiVersion: v1
-kind: PersistentVolumeClaim
+apiversion: v1
+kind: persistentvolumeclaim
 metadata:
   name: s3-pvc
 spec:
-  accessModes:
-    - ReadWriteMany
+  accessmodes:
+    - readwritemany
   resources:
     requests:
-      storage: 5Gi
-  storageClassName: s3-storage
+      storage: 5gi
+  storageclassname: s3-storage
 ```
-- And after just mount the volume to your `Pod`.
-- But actually this is where it is interesting as you don't even need to do that if is an `object store` like `S3` or `Minio`.
-  All you need here is to use the trick of shared volumes and use local `Minio` path or `S3 SDK` or `sidecar` using `mc` (Minio Client)
-Minimal eg:. might need another `sidecar` for `sync data` with `Minio` server.
+- and after just mount the volume to your `pod`.
+- but actually this is where it is interesting as you don't even need to do that if is an `object store` like `s3` or `minio`.
+  all you need here is to use the trick of shared volumes and use local `minio` path or `s3 sdk` or `sidecar` using `mc` (minio client)
+minimal eg:. might need another `sidecar` for `sync data` with `minio` server.
 ```yaml
-apiVersion: v1
-kind: Pod
+apiversion: v1
+kind: pod
 metadata:
   name: app-with-minio-sidecar
 spec:
   containers:
     - name: my-app
       image: my-app-image
-      volumeMounts:
+      volumemounts:
         - name: shared-data
-          mountPath: /app/data
+          mountpath: /app/data
     - name: minio-sidecar
       image: minio/mc
       command: ["/bin/sh", "-c"]
@@ -3539,309 +3543,309 @@ spec:
           mc alias set myminio http://minio.default.svc.cluster.local:9000 minio minio123
           mc cp --recursive myminio/my-bucket /shared-data
           tail -f /dev/null
-      volumeMounts:
+      volumemounts:
         - name: shared-data
-          mountPath: /shared-data
+          mountpath: /shared-data
   volumes:
     - name: shared-data
-      emptyDir: {}
+      emptydir: {}
 ```
 
-- summary by `ChatGpt`:
-Can I use it locally in kubeadm with MinIO? Yes! You can:
-- Deploy MinIO as a pod.
-- Use an S3 CSI driver that works with any S3-compatible storage (like MinIO).
-- Or use a sidecar container that downloads/upload files to MinIO.
+- summary by `chatgpt`:
+can i use it locally in kubeadm with minio? yes! you can:
+- deploy minio as a pod.
+- use an s3 csi driver that works with any s3-compatible storage (like minio).
+- or use a sidecar container that downloads/upload files to minio.
 
 
 
-# Full example using locally `allowedTopologies` 
+# full example using locally `allowedtopologies` 
 
-## Static Way:
+## static way:
 
 - label nodes
 ```bash
 kubectl label node node1 topology.kubernetes.io/zone=us-central-1a
 kubectl label node node2 topology.kubernetes.io/zone=us-central-1b
 ```
-- create `StorageClass`:
+- create `storageclass`:
 ```yaml
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
+apiversion: storage.k8s.io/v1
+kind: storageclass
 metadata:
   name: standard-local
 provisioner: kubernetes.io/no-provisioner  # no dynamic provisioning
-volumeBindingMode: WaitForFirstConsumer    # bind PV only when pod is scheduled
-allowedTopologies:
-  - matchLabelExpressions:
+volumebindingmode: waitforfirstconsumer    # bind pv only when pod is scheduled
+allowedtopologies:
+  - matchlabelexpressions:
       - key: topology.kubernetes.io/zone
         values:
           - us-central-1a
           - us-central-1b
 ```
-- create a `PV` (manually not automatic which gives more control to admin, called `static` way):
+- create a `pv` (manually not automatic which gives more control to admin, called `static` way):
 ```yaml
-apiVersion: v1
-kind: PersistentVolume
+apiversion: v1
+kind: persistentvolume
 metadata:
   name: local-pv-1
 spec:
   capacity:
-    storage: 2Gi
-  volumeMode: Filesystem
-  accessModes:
-    - ReadWriteOnce
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: standard-local
+    storage: 2gi
+  volumemode: filesystem
+  accessmodes:
+    - readwriteonce
+  persistentvolumereclaimpolicy: retain
+  storageclassname: standard-local
   local:
     path: /mnt/disks/ssd1  # you can `mkdir -p` this on the host manually
-  nodeAffinity:
+  nodeaffinity:
     required:
-      nodeSelectorTerms:
-        - matchExpressions:
+      nodeselectorterms:
+        - matchexpressions:
             - key: topology.kubernetes.io/zone
-              operator: In
+              operator: in
               values:
                 - us-central-1a
 ```
-- create a `PVC`:
+- create a `pvc`:
 ```yaml
-apiVersion: v1
-kind: PersistentVolumeClaim
+apiversion: v1
+kind: persistentvolumeclaim
 metadata:
   name: my-local-claim
 spec:
-  accessModes:
-    - ReadWriteOnce
+  accessmodes:
+    - readwriteonce
   resources:
     requests:
-      storage: 2Gi
-  storageClassName: standard-local
+      storage: 2gi
+  storageclassname: standard-local
 ```
-- create a `Pod`:
+- create a `pod`:
 ```yaml
-apiVersion: v1
-kind: Pod
+apiversion: v1
+kind: pod
 metadata:
   name: local-storage-pod
 spec:
   containers:
     - name: app
       image: nginx
-      volumeMounts:
-        - mountPath: /usr/share/nginx/html
+      volumemounts:
+        - mountpath: /usr/share/nginx/html
           name: data
   volumes:
     - name: data
-      persistentVolumeClaim:
-        claimName: my-local-claim
+      persistentvolumeclaim:
+        claimname: my-local-claim
 ```
 
-## Dynamic Way
+## dynamic way
 
-- install `CSI` driver for local provisioner from github (`rancher`)[https://github.com/rancher/local-path-provisioner]
-It registers a StorageClass named local-path which can be used for dynamic provisioning
+- install `csi` driver for local provisioner from github (`rancher`)[https://github.com/rancher/local-path-provisioner]
+it registers a storageclass named local-path which can be used for dynamic provisioning
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
 ```
-- Change the `StorageClass` with the `CSI` driver deployed to the cluster
+- change the `storageclass` with the `csi` driver deployed to the cluster
 ```
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
+apiversion: storage.k8s.io/v1
+kind: storageclass
 metadata:
   name: dynamic-local
-provisioner: rancher.io/local-path  # Or any CSI driver available in your cluster
-volumeBindingMode: WaitForFirstConsumer
+provisioner: rancher.io/local-path  # or any csi driver available in your cluster
+volumebindingmode: waitforfirstconsumer
 ```
-- get rid of the previously created `PV` and use the `PVC` and `Pod` (can change name if wanted to):
+- get rid of the previously created `pv` and use the `pvc` and `pod` (can change name if wanted to):
 ```yaml
-apiVersion: v1
-kind: PersistentVolumeClaim
+apiversion: v1
+kind: persistentvolumeclaim
 metadata:
   name: my-claim
 spec:
-  accessModes:
-    - ReadWriteOnce
+  accessmodes:
+    - readwriteonce
   resources:
     requests:
-      storage: 1Gi
-  storageClassName: dynamic-local
+      storage: 1gi
+  storageclassname: dynamic-local
 ```
 ```yaml
-apiVersion: v1
-kind: Pod
+apiversion: v1
+kind: pod
 metadata:
   name: pod-using-dynamic
 spec:
   containers:
     - name: app
       image: nginx
-      volumeMounts:
-        - mountPath: /usr/share/nginx/html
+      volumemounts:
+        - mountpath: /usr/share/nginx/html
           name: web-storage
   volumes:
     - name: web-storage
-      persistentVolumeClaim:
-        claimName: my-claim
+      persistentvolumeclaim:
+        claimname: my-claim
 ```
 
-# Storage Scenarios
-- 1: create volumes `static way` with `storageClassName: ""`
-     show also `claimRef` for strictly binded `PV` to `PVC`
+# storage scenarios
+- 1: create volumes `static way` with `storageclassname: ""`
+     show also `claimref` for strictly binded `pv` to `pvc`
 explain:
--> StorageClass
-  -> PV uses that storage class and defines volume size, access mode, reclaim policy, node affinity (if local type of volume)
-    -> pods request the PV with the right storage class
+-> storageclass
+  -> pv uses that storage class and defines volume size, access mode, reclaim policy, node affinity (if local type of volume)
+    -> pods request the pv with the right storage class
 
 
-- 2: create default `StorageClasss` in cluster and show behavior of `storageClassName: ""`
+- 2: create default `storageclasss` in cluster and show behavior of `storageclassname: ""`
 explain:
-a `PVC` can actually specify a storage class by name using: `storageClassName`
-if `storageClassName: ""`:
-- it will be set for `PV` that do not have any storage class name
-  - if `DefaultStorageClass` have been enabled in the kubernetes cluster.
-    done by adding annotation: `storageclass.kubernetes.io/is-default-class:true` (will be deprecated, better to use `storageClassName`):
-    - the `storageClassName: ""` request would be bounded to the default `storageClass` set by the kubernetes admin
-  - if `DefaultStorageClass` is not enabled: the `PVC` would be bound to the latest `PV` created. Order is from the newest to the oldest if many.
-    and those `PVs` need to also have `storageClassName: ""`.
+a `pvc` can actually specify a storage class by name using: `storageclassname`
+if `storageclassname: ""`:
+- it will be set for `pv` that do not have any storage class name
+  - if `defaultstorageclass` have been enabled in the kubernetes cluster.
+    done by adding annotation: `storageclass.kubernetes.io/is-default-class:true` (will be deprecated, better to use `storageclassname`):
+    - the `storageclassname: ""` request would be bounded to the default `storageclass` set by the kubernetes admin
+  - if `defaultstorageclass` is not enabled: the `pvc` would be bound to the latest `pv` created. order is from the newest to the oldest if many.
+    and those `pvs` need to also have `storageclassname: ""`.
 
-`WaitForFirstConsumer` and `affinity` to show how the pods are not respecting affinity when it is not set and how it by-passes the `scheduler`
-can create `PVC` without `storageClassName` only when the `DefaultStorageClass` is not enabled.
-if no `StorageClassName` defined when creating a `PVC` and then you enable `DefaultStorageClass`, kubernetes would set `StorageClassName: ""` to those `PVCs`
-if `StorageClassName: ""` defined in `PVC` and then you enable `DefaultStorageClass`, kubernetes won't update those `PVCs` as those are fine with the right `:""`
+`waitforfirstconsumer` and `affinity` to show how the pods are not respecting affinity when it is not set and how it by-passes the `scheduler`
+can create `pvc` without `storageclassname` only when the `defaultstorageclass` is not enabled.
+if no `storageclassname` defined when creating a `pvc` and then you enable `defaultstorageclass`, kubernetes would set `storageclassname: ""` to those `pvcs`
+if `storageclassname: ""` defined in `pvc` and then you enable `defaultstorageclass`, kubernetes won't update those `pvcs` as those are fine with the right `:""`
 
 
-- 3: create `StorageClass` static with `allowedTopologies`
-- 4: create `dynamic` way `StorageClass`
+- 3: create `storageclass` static with `allowedtopologies`
+- 4: create `dynamic` way `storageclass`
 
-explain: `StorageClass`(storageclass.yaml) is not indicating the `capacity`, but the `PVC`(pvc.yaml) would indicate `capacity` (`resources` -> `request` -> `storage`)
-  and then the pod would reference that `PVC`.
-  This is how the `Pod` would get request resources satisfied and volume mounted ('persistentVolumeClaim' -> `claimName`).
-  `PV` would be created automatically (`Dynamic`) by kubernetes.
+explain: `storageclass`(storageclass.yaml) is not indicating the `capacity`, but the `pvc`(pvc.yaml) would indicate `capacity` (`resources` -> `request` -> `storage`)
+  and then the pod would reference that `pvc`.
+  this is how the `pod` would get request resources satisfied and volume mounted ('persistentvolumeclaim' -> `claimname`).
+  `pv` would be created automatically (`dynamic`) by kubernetes.
 
-- 5: do maybe something different to show when we use or not `volumeBindingMode: WaitForFirstConsumer` on `StorageClass` just to focus on:
-    `Selector`(on `PVCs`),
-    `afinity`(on `PVs` to restrict on which nodes can use this `PV`),
-    `allowedTopologies`(on `StorageClass` which are not namespaced but could be used to have restriction in which nodes those classes can be used using `allowedTopologies`)
-    `nodeSelector`, `affinity`, or `topologySpreadConstraints` (on `Pod` in combinaison with the other ones to have fine grained control on where scheduler lands `Pods`)
+- 5: do maybe something different to show when we use or not `volumebindingmode: waitforfirstconsumer` on `storageclass` just to focus on:
+    `selector`(on `pvcs`),
+    `afinity`(on `pvs` to restrict on which nodes can use this `pv`),
+    `allowedtopologies`(on `storageclass` which are not namespaced but could be used to have restriction in which nodes those classes can be used using `allowedtopologies`)
+    `nodeselector`, `affinity`, or `topologyspreadconstraints` (on `pod` in combinaison with the other ones to have fine grained control on where scheduler lands `pods`)
     ``
 +---------------+-------+----+
-| Field/Concept	| PVC	| PV |
+| field/concept	| pvc	| pv |
 +---------------+-------+----+
-| Namespaced	| ✅ Yes| ❌ No |
+| namespaced	| ✅ yes| ❌ no |
 +---------------+-------+-------+
-| selector:	| ✅ Yes (to match PV labels)	| ❌ No |
+| selector:	| ✅ yes (to match pv labels)	| ❌ no |
 +---------------+-------------------------------+-------+
-| labels:	| ✅ Yes	| ✅ Yes |
+| labels:	| ✅ yes	| ✅ yes |
 +---------------+---------------+--------+
-| nodeAffinity	| ❌ No	| ✅ Yes |
+| nodeaffinity	| ❌ no	| ✅ yes |
 +---------------+-------+--------+
-| storageClassName:	| ✅ Yes | ✅ Yes |
+| storageclassname:	| ✅ yes | ✅ yes |
 +-----------------------+--------+--------+
 
-- static: here create my `PV` and introduce the use of `StorageClass` and just use the strictly binded rule and can introduce the idea of `default storage class`
-- dynamic: here don't create `PV` and `useStorageClass` only and use the affinity, topology examples and show how scheduler is skipped
+- static: here create my `pv` and introduce the use of `storageclass` and just use the strictly binded rule and can introduce the idea of `default storage class`
+- dynamic: here don't create `pv` and `usestorageclass` only and use the affinity, topology examples and show how scheduler is skipped
 
-static > StorageClass > Dynamic > Topology > Affinity + Topology > CSI Driver (Rancher)
+static > storageclass > dynamic > topology > affinity + topology > csi driver (rancher)
 
 # capacity 
-PersistentVolume and PersistentVolumeClaim definitions:
+persistentvolume and persistentvolumeclaim definitions:
 
-Unit	Meaning	Notes
-Ki	Kibibyte (2¹⁰ bytes)	1 Ki = 1024 bytes
-Mi	Mebibyte (2²⁰ bytes)	1 Mi = 1024 Ki = 1,048,576 bytes
-Gi	Gibibyte (2³⁰ bytes)	1 Gi = 1024 Mi = 1,073,741,824 bytes
-Ti	Tebibyte (2⁴⁰ bytes)	Rarely used in small clusters
-Pi	Pebibyte (2⁵⁰ bytes)	Very large storage
-Only binary SI units (with i) like Gi, Mi, Ki are supported and recommended in kubernetes `yaml`.
+unit	meaning	notes
+ki	kibibyte (2¹⁰ bytes)	1 ki = 1024 bytes
+mi	mebibyte (2²⁰ bytes)	1 mi = 1024 ki = 1,048,576 bytes
+gi	gibibyte (2³⁰ bytes)	1 gi = 1024 mi = 1,073,741,824 bytes
+ti	tebibyte (2⁴⁰ bytes)	rarely used in small clusters
+pi	pebibyte (2⁵⁰ bytes)	very large storage
+only binary si units (with i) like gi, mi, ki are supported and recommended in kubernetes `yaml`.
 
-# scenario 1 (Static)
-here we have affinity set on the `PV` and at the same time in the `StorageClass` we will set the `volumeBindingMode: WaitForFirstConsumer` 
+# scenario 1 (static)
+here we have affinity set on the `pv` and at the same time in the `storageclass` we will set the `volumebindingmode: waitforfirstconsumer` 
 so that scheduler will have the responsibility to check on nodes available and not be bypassed
 
 - `cat storage-class-waitforfirstconsumer.yaml`
 ```yaml
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
+apiversion: storage.k8s.io/v1
+kind: storageclass
 metadata:
   name: local-storage
-# indicates that this StorageClass does not support automatic provisioning
+# indicates that this storageclass does not support automatic provisioning
 provisioner: kubernetes.io/no-provisioner
-volumeBindingMode: WaitForFirstConsumer
+volumebindingmode: waitforfirstconsumer
 ```
 
 - `cat pv-local.yaml` 
 ```yaml
-apiVersion: v1
-kind: PersistentVolume
+apiversion: v1
+kind: persistentvolume
 metadata:
   name: local-pv-with-mandatory-affinity-set
 spec:
   capacity:
-    storage: 512Ki
-  # use `Block` for SSDs for eg:.
-  volumeMode: Filesystem
-  accessModes:
-    # RWO: `single node` mount, can be `red and written` by all pods living on that node
-    - ReadWriteOnce
-  # `Delete/Retain also Recycle but be carefull as it uses `rm -rf` and is only for `nfs` and `hostPath``
-  persistentVolumeReclaimPolicy: Delete
-  # play with this field to show behavior of by-passing scheduler and also another of `DefaultStorageClass`
-  # storageClassName: ""
-  storageClassName: local-storage
+    storage: 512ki
+  # use `block` for ssds for eg:.
+  volumemode: filesystem
+  accessmodes:
+    # rwo: `single node` mount, can be `red and written` by all pods living on that node
+    - readwriteonce
+  # `delete/retain also recycle but be carefull as it uses `rm -rf` and is only for `nfs` and `hostpath``
+  persistentvolumereclaimpolicy: delete
+  # play with this field to show behavior of by-passing scheduler and also another of `defaultstorageclass`
+  # storageclassname: ""
+  storageclassname: local-storage
   # using here `local` which makes us then obliged to use node affinity
   local:
     # this path need to be created manually on node
     path: /tmp/local-pv
   # here creating the node affinity constraint
-  nodeAffinity:
-    # required OR preferred
+  nodeaffinity:
+    # required or preferred
     required:
-      nodeSelectorTerms:
-      - matchExpressions:
+      nodeselectorterms:
+      - matchexpressions:
         # kubernetes ones
         #- key: kubernetes.io/hostname
         # custom
         - key: location
-          operator: In
+          operator: in
           values:
           - shizuoka
 ```
 
 - `cat pvc-without-selector.yaml`
 ```yaml
-apiVersion: v1
-kind: PersistentVolumeClaim
+apiversion: v1
+kind: persistentvolumeclaim
 metadata:
   name: pvc-scheduled-in-node-affinity-defined-by-pv-affinity
 spec:
-  accessModes:
-    - ReadWriteOnce
-  volumeMode: Filesystem
+  accessmodes:
+    - readwriteonce
+  volumemode: filesystem
   resources:
     requests:
-      storage: 512Ki
-  storageClassName: local-storage
+      storage: 512ki
+  storageclassname: local-storage
 ```
 
 - `cat pod-requesting-storage.yaml` 
 ```yaml
-apiVersion: v1
-kind: Pod
+apiversion: v1
+kind: pod
 metadata:
   name: pod-needing-storage
 spec:
   containers:
     - name: i-need-storage-pod
       image: nginx
-      volumeMounts:
+      volumemounts:
       # here using mountpath
-      - mountPath: "/tmp/local-pv"
+      - mountpath: "/tmp/local-pv"
         name: my-local-storage
   volumes:
     - name: my-local-storage
-      persistentVolumeClaim:
-        claimName: pvc-scheduled-in-node-affinity-defined-by-pv-affinity
+      persistentvolumeclaim:
+        claimname: pvc-scheduled-in-node-affinity-defined-by-pv-affinity
 ```
 
 - one `node2`: 
@@ -3852,7 +3856,7 @@ mkdir /tmpt/local-pv
 ```bash
 k label node node2.creditzens.net lcoation=shizuoka
 ```
-- make sure the node is labelled acording to the affinity of the pod and then apply `StorageClass`, `PV`, `PVC` and `Pod` to the cluster
+- make sure the node is labelled acording to the affinity of the pod and then apply `storageclass`, `pv`, `pvc` and `pod` to the cluster
 ```bash
 k apply -f <filename>
 ... # do the same will all of those files
@@ -3860,8 +3864,8 @@ k apply -f <filename>
 - here normally the pod will be scheduled in node2 which has the label corresponding to the affinity of the `pv`
 ```bash
  k get pods -o wide
-NAME                  READY   STATUS    RESTARTS   AGE    IP               NODE                    NOMINATED NODE   READINESS GATES
-pod-needing-storage   1/1     Running   0          153m   172.16.210.124   node2.creditizens.net   <none>           <none>
+name                  ready   status    restarts   age    ip               node                    nominated node   readiness gates
+pod-needing-storage   1/1     running   0          153m   172.16.210.124   node2.creditizens.net   <none>           <none>
 ```
 - then `exec` in `pod` to create a file with content at the volume location `/tmp/local-pv`
 ```bash
@@ -3873,24 +3877,24 @@ root@pod-needing-storage:/# echo "junko shibuya" > /tmp/local-pv/junko-location-
 creditizens@node2:~$ cat /tmp/local-pv/junko-location-now.txt 
 junko shibuya
 ```
-**Note:**:
-- the `PV` and `PVC` would still reference to each others and be bound even if pod is deleted, so they need to be delete separately and manually
+**note:**:
+- the `pv` and `pvc` would still reference to each others and be bound even if pod is deleted, so they need to be delete separately and manually
 -  the volume on the `node2` is not deleted by kubernetes as it is made to persist if there is `pod` failure. so need also to be deleted manually.
 
 
-# Scenario 2 (From Static to Dynamic):
+# scenario 2 (from static to dynamic):
 
-Here will be showing:
-- how pv bind to storageclasses: using `storageClassName: ""` and `# storageClassName: ` not set
-- how we need a provisioner and install rancher or show how to install it, then use dynamic provisioning showing no need to create `PV`
-- after can maybe show more Topology and how to use it
-- after move to `Dynamic` fully and now no more `affinity` to control where pod would be deployed, no more control but use `Topology` on `StorageClass`
+here will be showing:
+- how pv bind to storageclasses: using `storageclassname: ""` and `# storageclassname: ` not set
+- how we need a provisioner and install rancher or show how to install it, then use dynamic provisioning showing no need to create `pv`
+- after can maybe show more topology and how to use it
+- after move to `dynamic` fully and now no more `affinity` to control where pod would be deployed, no more control but use `topology` on `storageclass`
   to show that this is a way to control where those pods would be deployed.
-always show where is the volume created as with `rancher` `local-path` provisioner we don't get it at the path of `PV` as here it is dynamic and 
-we don't create `PVs` so the provisioner will be putting the volumes at `/opt/local-path-provisioner/pvc-<numbers>...`.
-So need here to describe the `PV` created automatically by the provisioner.
+always show where is the volume created as with `rancher` `local-path` provisioner we don't get it at the path of `pv` as here it is dynamic and 
+we don't create `pvs` so the provisioner will be putting the volumes at `/opt/local-path-provisioner/pvc-<numbers>...`.
+so need here to describe the `pv` created automatically by the provisioner.
 
-### install `local-path` provisioner (Rancher)
+### install `local-path` provisioner (rancher)
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
 ```
@@ -3900,148 +3904,148 @@ kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisione
 kubectl patch storageclass local-path -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
 ```
 
-### use `storageClassName: local-path`
-in your created `PVC` use `storageClassName: local-path`
+### use `storageclassname: local-path`
+in your created `pvc` use `storageclassname: local-path`
 
-- `PVC`s
+- `pvc`s
 ```yaml
-apiVersion: v1
-kind: PersistentVolumeClaim
+apiversion: v1
+kind: persistentvolumeclaim
 metadata:
   name: pvc-following-node-affinity-defined-in-pv-with-or-without-storageclass
 spec:
-  accessModes:
-    - ReadWriteOnce
-  volumeMode: Filesystem
+  accessmodes:
+    - readwriteonce
+  volumemode: filesystem
   resources:
     requests:
-      storage: 512Ki
-  # if no storageClassName defined kubernetes assumes `Dynamic` type of provisioning so need to change the provisioner on StorageClass
-  # storageClassName: ""
-  # this is the rancher Dynamic provisioner
-  storageClassName: local-path
+      storage: 512ki
+  # if no storageclassname defined kubernetes assumes `dynamic` type of provisioning so need to change the provisioner on storageclass
+  # storageclassname: ""
+  # this is the rancher dynamic provisioner
+  storageclassname: local-path
 
-  # `selector` can be defined with `matchLabels` and `matchExpressions`
+  # `selector` can be defined with `matchlabels` and `matchexpressions`
 ```
 
-- `PV`s
+- `pv`s
 ```yaml
-apiVersion: v1
-kind: PersistentVolume
+apiversion: v1
+kind: persistentvolume
 metadata:
   name: local-pv-with-mandatory-affinity-set
 spec:
   capacity:
-    storage: 512Ki
-  # use `Block` for SSDs for eg:.
-  volumeMode: Filesystem
-  accessModes:
-    # RWO: `single node` mount, can be `red and written` by all pods living on that node
-    - ReadWriteOnce
-  # `Delete/Retain also Recycle but be carefull as it uses `rm -rf` and is only for `nfs` and `hostPath``
-  persistentVolumeReclaimPolicy: Delete
-  # play with this field to show behavior of by-passing scheduler and also another of `DefaultStorageClass`
-  #storageClassName: ""
-  storageClassName: local-storage
+    storage: 512ki
+  # use `block` for ssds for eg:.
+  volumemode: filesystem
+  accessmodes:
+    # rwo: `single node` mount, can be `red and written` by all pods living on that node
+    - readwriteonce
+  # `delete/retain also recycle but be carefull as it uses `rm -rf` and is only for `nfs` and `hostpath``
+  persistentvolumereclaimpolicy: delete
+  # play with this field to show behavior of by-passing scheduler and also another of `defaultstorageclass`
+  #storageclassname: ""
+  storageclassname: local-storage
   # using here `local` which makes us then obliged to use node affinity
   local:
     # this path need to be created manually on node
     path: /tmp/local-pv
   # here creating the node affinity constraint
-  nodeAffinity:
-    # required OR preferred
+  nodeaffinity:
+    # required or preferred
     required:
-      nodeSelectorTerms:
-      - matchExpressions:
+      nodeselectorterms:
+      - matchexpressions:
         # custom
         - key: location
-          operator: Exists
+          operator: exists
 ```
 ```yaml
-apiVersion: v1
-kind: PersistentVolume
+apiversion: v1
+kind: persistentvolume
 metadata:
   name: local-pv-2-with-mandatory-affinity-set
 spec:
   capacity:
-    storage: 512Ki
-  volumeMode: Filesystem
-  accessModes:
-    - ReadWriteOnce
-  persistentVolumeReclaimPolicy: Delete
-  #storageClassName: ""
-  # storageClassName: local-storage
+    storage: 512ki
+  volumemode: filesystem
+  accessmodes:
+    - readwriteonce
+  persistentvolumereclaimpolicy: delete
+  #storageclassname: ""
+  # storageclassname: local-storage
   local:
     path: /tmp/local-pv
-  nodeAffinity:
+  nodeaffinity:
     required:
-      nodeSelectorTerms:
-      - matchExpressions:
+      nodeselectorterms:
+      - matchexpressions:
         # custom
         - key: location
-          operator: Exists
+          operator: exists
 ```
 ```yaml
-apiVersion: v1
-kind: PersistentVolume
+apiversion: v1
+kind: persistentvolume
 metadata:
   name: local-pv-3-with-mandatory-affinity-set
 spec:
   capacity:
-    storage: 512Ki
-  volumeMode: Filesystem
-  accessModes:
-    - ReadWriteOnce
-  persistentVolumeReclaimPolicy: Delete
-  storageClassName: ""
-  # storageClassName: local-storage
+    storage: 512ki
+  volumemode: filesystem
+  accessmodes:
+    - readwriteonce
+  persistentvolumereclaimpolicy: delete
+  storageclassname: ""
+  # storageclassname: local-storage
   local:
     path: /tmp/local-pv
-  nodeAffinity:
+  nodeaffinity:
     required:
-      nodeSelectorTerms:
-      - matchExpressions:
+      nodeselectorterms:
+      - matchexpressions:
         # custom
         - key: location
-          operator: Exists
+          operator: exists
 ```
 
-- `StorageClass`es
+- `storageclass`es
 ```yaml
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
+apiversion: storage.k8s.io/v1
+kind: storageclass
 metadata:
   name: local-storage
-# indicates that this StorageClass does not support automatic provisioning
+# indicates that this storageclass does not support automatic provisioning
 provisioner: kubernetes.io/no-provisioner
-#volumeBindingMode: WaitForFirstConsumer
+#volumebindingmode: waitforfirstconsumer
 ```
 ```yaml
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
+apiversion: storage.k8s.io/v1
+kind: storageclass
 metadata:
   name: local-storage2
 provisioner: kubernetes.io/no-provisioner
-#volumeBindingMode: WaitForFirstConsumer
+#volumebindingmode: waitforfirstconsumer
 ```
-A way to create a default `StorageClass` using the annotation but will not work on creating volume for the `pod` to consume
+a way to create a default `storageclass` using the annotation but will not work on creating volume for the `pod` to consume
 will just bind to `pvc` as it is expecting `dynamic` provisioning so need to install a dynamic provisioner
 so here could use the `rancher` provisioner `local-path`
 ```yaml
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
+apiversion: storage.k8s.io/v1
+kind: storageclass
 metadata:
   name: local-storage3-with-annotation-default
   annotations:
     storageclass.kubernetes.io/is-default-class: "true"
-# indicates that this StorageClass does not support automatic provisioning
+# indicates that this storageclass does not support automatic provisioning
 provisioner: kubernetes.io/no-provisioner
-#volumeBindingMode: WaitForFirstConsumer
+#volumebindingmode: waitforfirstconsumer
 ```
- This is how to install the `StorageClass` from `Rancher` `local-path` and then patch it to become `default` but can create more than one after that
-so manually create `StorageClasses` using `yaml` file and with different names but same `provisioner: local-path`
+ this is how to install the `storageclass` from `rancher` `local-path` and then patch it to become `default` but can create more than one after that
+so manually create `storageclasses` using `yaml` file and with different names but same `provisioner: local-path`
 ```yaml
-# Rancher Local Path Provisioner (storageclass, deployment, configmap)
+# rancher local path provisioner (storageclass, deployment, configmap)
 # kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
 # kubectl patch storageclass local-path -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
 ```
@@ -7178,19 +7182,23 @@ so we will for ksutomize+helm use helm and show it goes fine with our chart and 
 
 ______________________________________________________________________
 # Next
-- [ ] do those kubernetes concepts:
+- [x] do those kubernetes concepts:
     - [x] Storage
     - [x] Backup and Recovery
     - [x] Resources Limits
     - [x] Admission Policy
     - [x] Cronjob, Jobs
     - [x] Damonsets
-    - [ ] Kubernetes Kustomize
+    - [x] Kubernetes Kustomize
     - [x] Helm (partially seen through prometheus grafana and cronjobs)
-- [ ] update the cluster versions until we reach 1.32 (we are at 1.27)
+
+________________________________________________________________________
+# Nice To Have
+- update the cluster versions until we reach 1.32 (we are at 1.27)
     so we will have to do same process several times and fix any compatibility issues along the way.
     need to check supported versions ranges for each kubeadm updated version
-- [ ] create thsoe scripts in bash that will upgrade controller node and worker nodes
+
+- create thsoe scripts in bash that will upgrade controller node and worker nodes
       and then create an ansible playbook having variables set ina file for containerd version and kubeadm version to upgrade nodes
       then create a rust app that would accept as input terminal variables the versions and start the ansible playbook
       -  probably need to use ansible until it works to automate one version upgrade 1.28 to 1.29 fully
